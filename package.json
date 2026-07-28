@@ -1,0 +1,34 @@
+{
+  "name": "scoped-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project-scoped and global MCP configuration for Pi, powered by pi-mcp-adapter.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "mcp"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test",
+    "update:adapter": "npm install --save-exact pi-mcp-adapter@latest",
+    "check:adapter": "npm outdated pi-mcp-adapter"
+  },
+  "dependencies": {
+    "pi-mcp-adapter": "2.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
