@@ -65,6 +65,20 @@ file discovery and `imports` are intentionally not used. `/mcp setup`,
 `/mcp enable`, and `/mcp disable` cannot edit this registry. Status, reconnect,
 authentication, proxy calls, and direct tools continue to work.
 
+The following original adapter subcommands are redundant when using
+`scoped-mcp`:
+
+```text
+/mcp setup
+/mcp enable
+/mcp disable
+```
+
+Use `/scoped-mcp edit`, `/scoped-mcp enable`, and `/scoped-mcp disable`
+instead. Keep the original `/mcp` command available: its runtime operations such
+as `/mcp tools`, `/mcp prompts`, `/mcp reconnect`, `/mcp logout`, and
+`/mcp-auth` remain useful.
+
 ## Commands
 
 Show the selected registry, active project scope, effective servers, their
