@@ -1,44 +1,44 @@
 {
-  "$global": {
-    "mcpServers": {
-      "globally-available-server": {
-        "command": "npx",
-        "args": [
-          "-y",
-          "replace-with-a-global-mcp-package"
-        ],
-        "lifecycle": "lazy"
-      }
-    }
-  },
-  "shop-api": {
-    "path": "/Users/me/Projects/shop-api",
-    "mcpServers": {
-      "phpstorm": {
-        "command": "/absolute/command/copied/from/phpstorm",
-        "args": [
-          "arguments",
-          "copied",
-          "from",
-          "phpstorm"
-        ],
-        "lifecycle": "lazy"
-      }
-    }
-  },
-  "legacy-app": {
-    "path": "/Users/me/Projects/legacy-app",
-    "mcpServers": {
-      "phpstorm": {
-        "command": "/absolute/command/copied/from/phpstorm",
-        "args": [
-          "arguments",
-          "copied",
-          "from",
-          "phpstorm"
-        ],
-        "lifecycle": "lazy"
-      }
-    }
-  }
+	"$global": {
+		"mcpServers": {
+			"globally-available-server": {
+				"command": "npx",
+				"args": [
+					"-y",
+					"replace-with-a-global-mcp-package"
+				],
+				"lifecycle": "lazy"
+			}
+		}
+	},
+	"shop-api": {
+		"path": "/Users/me/Projects/shop-api",
+		"mcpServers": {
+			"phpstorm": {
+				"command": "/absolute/command/copied/from/phpstorm",
+				"args": [
+					"arguments",
+					"copied",
+					"from",
+					"phpstorm"
+				],
+				"lifecycle": "lazy"
+			}
+		}
+	},
+	"legacy-app": {
+		"path": "/Users/me/Projects/legacy-app",
+		"mcpServers": {
+			"phpstorm": {
+				"command": "/absolute/command/copied/from/phpstorm",
+				"args": [
+					"arguments",
+					"copied",
+					"from",
+					"phpstorm"
+				],
+				"lifecycle": "lazy"
+			}
+		}
+	}
 }

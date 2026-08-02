@@ -1,10 +1,10 @@
 import type { McpConfig } from "pi-mcp-adapter/types";
 
 export interface McpAdapterOptions {
-  config?: McpConfig;
-  configPath?: string;
+	config?: McpConfig;
+	configPath?: string;
 }
 
 export function createMcpAdapter(
-  options?: McpAdapterOptions,
+	options?: McpAdapterOptions,
 ): (pi: unknown) => void;
