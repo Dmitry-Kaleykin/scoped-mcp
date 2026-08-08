@@ -49,8 +49,9 @@ test("merges global MCPs with the matching project", () => {
 		},
 		project: {
 			path: paths.project,
-			mcpServers: { phpstorm: { command: "phpstorm-command" } },
-			settings: { toolPrefix: "mcp" },
+			mcpServers: {
+				phpstorm: { command: "phpstorm-command", toolPrefix: "mcp" },
+			},
 		},
 	});
 
@@ -64,9 +65,88 @@ test("merges global MCPs with the matching project", () => {
 		},
 		settings: {
 			idleTimeout: 10,
-			toolPrefix: "mcp",
+			toolPrefix: { phpstorm: "mcp" },
 		},
 	});
+});
+
+test("inherits per-server prefixes through disabled-only project overrides", () => {
+	const paths = fixture();
+	const registry = parseRegistry({
+		[GLOBAL_SCOPE_KEY]: {
+			mcpServers: {
+				shared: {
+					command: "shared-command",
+					toolPrefix: "none",
+				},
+			},
+		},
+		project: {
+			path: paths.project,
+			mcpServers: { shared: { disabled: true } },
+		},
+	});
+
+	const selected = selectScopedMcpConfig(registry, paths.project);
+
+	assert.deepEqual(selected.config.mcpServers.shared, {
+		command: "shared-command",
+		disabled: true,
+	});
+	assert.deepEqual(selected.config.settings?.toolPrefix, { shared: "none" });
+});
+
+test("project can override an inherited server prefix without copying its definition", () => {
+	const paths = fixture();
+	const registry = parseRegistry({
+		[GLOBAL_SCOPE_KEY]: {
+			mcpServers: {
+				shared: {
+					url: "https://global.invalid/mcp",
+					headers: { Authorization: "global-secret" },
+					toolPrefix: "mcp",
+				},
+			},
+		},
+		project: {
+			path: paths.project,
+			mcpServers: { shared: { toolPrefix: "none" } },
+		},
+	});
+
+	const selected = selectScopedMcpConfig(registry, paths.project);
+
+	assert.deepEqual(selected.config.mcpServers.shared, {
+		url: "https://global.invalid/mcp",
+		headers: { Authorization: "global-secret" },
+	});
+	assert.deepEqual(selected.config.settings?.toolPrefix, { shared: "none" });
+});
+
+test("rejects root-level toolPrefix settings", () => {
+	assert.throws(
+		() =>
+			parseRegistry({
+				[GLOBAL_SCOPE_KEY]: {
+					settings: { toolPrefix: "none" },
+				},
+			}),
+		/set toolPrefix on each MCP server instead/,
+	);
+});
+
+test("rejects invalid per-server toolPrefix values", () => {
+	assert.throws(
+		() =>
+			parseRegistry({
+				[GLOBAL_SCOPE_KEY]: {
+					mcpServers: {
+						server: { command: "server-command", toolPrefix: "custom" },
+					},
+				},
+			}),
+		/must be "server", "short", "none", or "mcp"/,
+	);
 });
 
 test("chooses the deepest matching project path", () => {
@@ -97,6 +177,7 @@ test("project server definitions replace same-named global definitions", () => {
 				phpstorm: {
 					url: "https://global.invalid/mcp",
 					headers: { Authorization: "global-secret" },
+					toolPrefix: "mcp",
 				},
 			},
 		},
@@ -115,6 +196,7 @@ test("project server definitions replace same-named global definitions", () => {
 	assert.deepEqual(selected.config.mcpServers.phpstorm, {
 		url: "https://project.invalid/mcp",
 	});
+	assert.equal(selected.config.settings, undefined);
 });
 
 test("rejects project scopes without a path", () => {

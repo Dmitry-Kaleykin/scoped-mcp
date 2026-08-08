@@ -1,3 +1,5 @@
+export type ToolPrefixMode = "server" | "none" | "short" | "mcp";
+
 export interface ServerEntry {
 	command?: string;
 	args?: string[];
@@ -20,10 +22,11 @@ export interface ServerEntry {
 	debug?: boolean;
 	trace?: boolean;
 	disabled?: boolean;
+	toolPrefix?: ToolPrefixMode;
 }
 
 export interface McpSettings {
-	toolPrefix?: "server" | "none" | "short" | "mcp";
+	toolPrefix?: ToolPrefixMode | Record<string, ToolPrefixMode>;
 	showStatusIcon?: boolean;
 	idleTimeout?: number;
 	requestTimeoutMs?: number;

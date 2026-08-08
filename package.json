@@ -12,7 +12,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "node --import tsx --test",
-    "update:adapter": "npm install --save-exact pi-mcp-adapter@latest",
+    "postinstall": "node scripts/patch-adapter.mjs",
+    "update:adapter": "npm install --ignore-scripts --save-exact pi-mcp-adapter@latest",
     "check:adapter": "npm outdated pi-mcp-adapter"
   },
   "dependencies": {

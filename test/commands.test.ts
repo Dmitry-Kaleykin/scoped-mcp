@@ -134,6 +134,40 @@ test("--project can enable a globally disabled server", () => {
 	);
 });
 
+test("project toggles preserve an inherited server's prefix override", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	const projectScope = registry.project;
+	assert.ok(projectScope);
+	projectScope.mcpServers ??= {};
+	projectScope.mcpServers.shared = { toolPrefix: "none" };
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	setServerDisabled({
+		cwd: paths.project,
+		disabled: true,
+		registryPath: paths.registryPath,
+		serverName: "shared",
+		target: "project",
+	});
+	assert.deepEqual(
+		readScopedMcpRegistry(paths.registryPath).project?.mcpServers?.shared,
+		{ toolPrefix: "none", disabled: true },
+	);
+
+	setServerDisabled({
+		cwd: paths.project,
+		disabled: false,
+		registryPath: paths.registryPath,
+		serverName: "shared",
+		target: "project",
+	});
+	assert.deepEqual(
+		readScopedMcpRegistry(paths.registryPath).project?.mcpServers?.shared,
+		{ toolPrefix: "none" },
+	);
+});
+
 test("status reports registry, scope, origin, state, and direct mode", () => {
 	const paths = fixture();
 	const status = formatScopedMcpStatus(paths.project, {
@@ -142,8 +176,11 @@ test("status reports registry, scope, origin, state, and direct mode", () => {
 
 	assert.match(status, new RegExp(`Registry: ${paths.registryPath}`));
 	assert.match(status, /Scope: project/);
-	assert.match(status, /global: enabled, proxy, scope: \$global/);
-	assert.match(status, /project: enabled, direct: all, scope: project/);
+	assert.match(status, /global: enabled, proxy, prefix: server, scope: \$global/);
+	assert.match(
+		status,
+		/project: enabled, direct: all, prefix: server, scope: project/,
+	);
 });
 
 test("global target rejects servers that exist only in a project", () => {

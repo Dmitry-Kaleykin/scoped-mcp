@@ -9,7 +9,12 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type { McpConfig, McpSettings, ServerEntry } from "pi-mcp-adapter/types";
+import type {
+	McpConfig,
+	McpSettings,
+	ServerEntry,
+	ToolPrefixMode,
+} from "pi-mcp-adapter/types";
 
 export const GLOBAL_SCOPE_KEY = "$global";
 export const REGISTRY_PATH_ENV = "PI_MCP_PROJECTS_CONFIG";
@@ -17,7 +22,7 @@ export const REGISTRY_PATH_ENV = "PI_MCP_PROJECTS_CONFIG";
 export interface RegistryScope {
 	path?: string;
 	mcpServers?: Record<string, ServerEntry>;
-	settings?: McpSettings;
+	settings?: Omit<McpSettings, "toolPrefix">;
 }
 
 export type ScopedMcpRegistry = Record<string, RegistryScope>;
@@ -95,17 +100,47 @@ function parseScope(name: string, value: unknown): RegistryScope {
 		throw new Error(`[scoped-mcp] project "${name}" must define an absolute "path"`);
 	}
 	if (mcpServers !== undefined) {
-		requireObject(mcpServers, `scope "${name}".mcpServers`);
+		const servers = requireObject(mcpServers, `scope "${name}".mcpServers`);
+		for (const [serverName, entry] of Object.entries(servers)) {
+			const server = requireObject(
+				entry,
+				`scope "${name}".mcpServers["${serverName}"]`,
+			);
+			if (
+				server.toolPrefix !== undefined &&
+				!isToolPrefixMode(server.toolPrefix)
+			) {
+				throw new Error(
+					`[scoped-mcp] scope "${name}".mcpServers["${serverName}"].toolPrefix must be "server", "short", "none", or "mcp"`,
+				);
+			}
+		}
 	}
 	if (settings !== undefined) {
-		requireObject(settings, `scope "${name}".settings`);
+		const parsedSettings = requireObject(settings, `scope "${name}".settings`);
+		if ("toolPrefix" in parsedSettings) {
+			throw new Error(
+				`[scoped-mcp] scope "${name}".settings.toolPrefix is not supported; set toolPrefix on each MCP server instead`,
+			);
+		}
 	}
 
 	return {
 		...(typeof path === "string" ? { path } : {}),
 		...(mcpServers ? { mcpServers: mcpServers as Record<string, ServerEntry> } : {}),
-		...(settings ? { settings: settings as McpSettings } : {}),
+		...(settings
+			? { settings: settings as Omit<McpSettings, "toolPrefix"> }
+			: {}),
 	};
+}
+
+function isToolPrefixMode(value: unknown): value is ToolPrefixMode {
+	return (
+		value === "server" ||
+		value === "short" ||
+		value === "none" ||
+		value === "mcp"
+	);
 }
 
 export function parseRegistry(raw: unknown): ScopedMcpRegistry {
@@ -115,28 +150,49 @@ export function parseRegistry(raw: unknown): ScopedMcpRegistry {
 	);
 }
 
-function isDisabledOnlyOverride(entry: ServerEntry): boolean {
+export function isInheritedServerOverride(entry: ServerEntry): boolean {
 	const keys = Object.keys(entry);
-	return keys.length === 1 && keys[0] === "disabled";
+	return (
+		keys.length > 0 &&
+		keys.every((key) => key === "disabled" || key === "toolPrefix")
+	);
 }
 
 function mergeScopes(globalScope: RegistryScope, projectScope?: RegistryScope): McpConfig {
-	const mcpServers = { ...(globalScope.mcpServers ?? {}) };
+	const scopedServers = { ...(globalScope.mcpServers ?? {}) };
 	for (const [name, projectEntry] of Object.entries(projectScope?.mcpServers ?? {})) {
-		const globalEntry = mcpServers[name];
-		mcpServers[name] =
-			globalEntry && isDisabledOnlyOverride(projectEntry)
+		const globalEntry = scopedServers[name];
+		scopedServers[name] =
+			globalEntry && isInheritedServerOverride(projectEntry)
 				? { ...globalEntry, ...projectEntry }
 				: projectEntry;
 	}
 
+	const toolPrefixes: Record<string, ToolPrefixMode> = {};
+	const mcpServers = Object.fromEntries(
+		Object.entries(scopedServers).map(([name, entry]) => {
+			const { toolPrefix, ...upstreamEntry } = entry;
+			if (toolPrefix !== undefined) toolPrefixes[name] = toolPrefix;
+			return [name, upstreamEntry];
+		}),
+	);
+	const mergedSettings =
+		globalScope.settings || projectScope?.settings
+			? {
+					...(globalScope.settings ?? {}),
+					...(projectScope?.settings ?? {}),
+				}
+			: undefined;
+
 	return {
 		mcpServers,
 		settings:
-			globalScope.settings || projectScope?.settings
+			mergedSettings || Object.keys(toolPrefixes).length > 0
 				? {
-						...(globalScope.settings ?? {}),
-						...(projectScope?.settings ?? {}),
+						...(mergedSettings ?? {}),
+						...(Object.keys(toolPrefixes).length > 0
+							? { toolPrefix: toolPrefixes }
+							: {}),
 					}
 				: undefined,
 	};
@@ -286,14 +342,18 @@ export function setServerDisabled(options: {
 	}
 
 	let nextEntry: ServerEntry | undefined;
-	if (projectEntry && !isDisabledOnlyOverride(projectEntry)) {
+	if (projectEntry && !isInheritedServerOverride(projectEntry)) {
 		nextEntry = options.disabled
 			? { ...projectEntry, disabled: true }
 			: deleteDisabled(projectEntry);
 	} else if (options.disabled) {
-		nextEntry = { disabled: true };
+		nextEntry = { ...(projectEntry ?? {}), disabled: true };
 	} else if (globalEntry?.disabled === true) {
-		nextEntry = { disabled: false };
+		nextEntry = { ...(projectEntry ?? {}), disabled: false };
+	} else if (projectEntry) {
+		const enabledOverride = deleteDisabled(projectEntry);
+		nextEntry =
+			Object.keys(enabledOverride).length > 0 ? enabledOverride : undefined;
 	}
 
 	const changed = JSON.stringify(nextEntry) !== JSON.stringify(projectEntry);

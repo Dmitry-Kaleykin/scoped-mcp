@@ -5,7 +5,7 @@ A small Pi package that supplies `pi-mcp-adapter` with:
 - MCP servers that work globally.
 - Additional MCP servers selected by the directory where Pi starts.
 - No `.pi` or MCP configuration files inside your projects.
-- A direct dependency on upstream `pi-mcp-adapter`, without a fork.
+- A direct dependency on upstream `pi-mcp-adapter`, without maintaining a fork.
 
 ## Configuration
 
@@ -27,7 +27,8 @@ Start with [`mcp-projects.example.json`](./mcp-projects.example.json):
       "global-server": {
         "command": "npx",
         "args": ["-y", "some-mcp-server"],
-        "lifecycle": "lazy"
+        "lifecycle": "lazy",
+        "toolPrefix": "short"
       }
     }
   },
@@ -37,7 +38,8 @@ Start with [`mcp-projects.example.json`](./mcp-projects.example.json):
       "phpstorm": {
         "command": "/command/copied/from/phpstorm",
         "args": ["arguments", "copied", "from", "phpstorm"],
-        "lifecycle": "lazy"
+        "lifecycle": "lazy",
+        "toolPrefix": "none"
       }
     }
   }
@@ -52,9 +54,17 @@ Nested project entries are supported; the deepest matching path wins.
 Project MCP servers are merged over the global set. When both scopes define the
 same server name, the complete project definition replaces the global one. This
 avoids carrying credentials from a global URL into a project-specific URL.
-The one exception is a project entry containing only `disabled`; it acts as a
-safe enable/disable override for an inherited global server.
+The one exception is a project entry containing only `disabled`, `toolPrefix`,
+or both; it acts as a safe override for an inherited global server.
 `settings` are shallow-merged, with project values taking precedence.
+
+Tool prefixes are configured per MCP server with `toolPrefix`. The supported
+values are the same as upstream: `"server"` (the default), `"short"`, `"none"`,
+and `"mcp"`. Root-level `settings.toolPrefix` is intentionally rejected by this
+wrapper; move it onto each server that needs non-default behavior. A project
+can override an inherited global server's prefix without copying its connection
+details. A complete project server definition replaces the prefix together with
+the rest of the definition.
 
 Paste the server object supplied by PhpStorm under the project's `mcpServers`.
 Current PhpStorm versions provide this through **Settings → Tools → MCP Server →
@@ -153,18 +163,26 @@ Restart Pi after installation or configuration changes.
 
 ## Update pi-mcp-adapter
 
-This project imports the supported `createMcpAdapter()` factory and contains no
-forked adapter code. To upgrade to the newest upstream release and update both
-`package.json` and `package-lock.json`:
+This project imports the supported `createMcpAdapter()` factory. Upstream 2.15.0
+accepts only one prefix mode, so [`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs)
+applies a narrow compatibility patch during `npm install`: the existing naming
+helper also accepts the per-server mode map produced by this wrapper. The patch
+is version-pinned and fails loudly against an unreviewed adapter version.
+
+To download the newest upstream release without running the version-pinned
+postinstall patch:
 
 ```sh
 cd /Users/donais/Documents/Projects/scoped-mcp
 npm run update:adapter
 ```
 
-Then run the checks and restart Pi:
+Review upstream's prefix implementation. If the patch is still needed, update
+`supportedVersion` and any changed source anchors in `scripts/patch-adapter.mjs`.
+Then apply it, run the checks, and restart Pi:
 
 ```sh
+npm install
 npm test
 npm run check
 ```

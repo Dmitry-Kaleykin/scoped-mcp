@@ -1,10 +1,11 @@
-import type { ServerEntry } from "pi-mcp-adapter/types";
+import type { McpConfig, ServerEntry, ToolPrefixMode } from "pi-mcp-adapter/types";
 import { openRegistryInTerminal } from "./editor.ts";
 import type { ScopedCommandContext, ScopedPiApi } from "./pi-api.ts";
 import {
 	ensureScopedMcpRegistry,
 	getRegistryPath,
 	GLOBAL_SCOPE_KEY,
+	isInheritedServerOverride,
 	loadScopedMcpConfig,
 	readScopedMcpRegistry,
 	setServerDisabled,
@@ -31,17 +32,21 @@ function directToolsLabel(entry: ServerEntry): string {
 	return "proxy";
 }
 
+function toolPrefixLabel(config: McpConfig, serverName: string): ToolPrefixMode {
+	const configured = config.settings?.toolPrefix;
+	return (
+		(typeof configured === "string" ? configured : configured?.[serverName]) ??
+		"server"
+	);
+}
+
 function serverOrigin(
 	projectName: string | undefined,
 	globalEntry: ServerEntry | undefined,
 	projectEntry: ServerEntry | undefined,
 ): string {
 	if (!projectEntry) return GLOBAL_SCOPE_KEY;
-	if (
-		globalEntry &&
-		Object.keys(projectEntry).length === 1 &&
-		"disabled" in projectEntry
-	) {
+	if (globalEntry && isInheritedServerOverride(projectEntry)) {
 		return `${projectName} override`;
 	}
 	return projectName ?? GLOBAL_SCOPE_KEY;
@@ -81,7 +86,7 @@ export function formatScopedMcpStatus(
 				projectServers[name],
 			);
 			lines.push(
-				`  ${name}: ${enabled}, ${directToolsLabel(effective)}, scope: ${origin}`,
+				`  ${name}: ${enabled}, ${directToolsLabel(effective)}, prefix: ${toolPrefixLabel(selection.config, name)}, scope: ${origin}`,
 			);
 		}
 	}
