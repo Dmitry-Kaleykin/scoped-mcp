@@ -55,7 +55,8 @@ Project MCP servers are merged over the global set. When both scopes define the
 same server name, the complete project definition replaces the global one. This
 avoids carrying credentials from a global URL into a project-specific URL.
 The one exception is a project entry containing only `disabled`, `toolPrefix`,
-or both; it acts as a safe override for an inherited global server.
+`samplingAutoApprove`, or a combination of them; it acts as a safe override for
+an inherited global server.
 `settings` are shallow-merged, with project values taking precedence.
 
 Tool prefixes are configured per MCP server with `toolPrefix`. The supported
@@ -65,6 +66,13 @@ wrapper; move it onto each server that needs non-default behavior. A project
 can override an inherited global server's prefix without copying its connection
 details. A complete project server definition replaces the prefix together with
 the rest of the definition.
+
+Sampling approval can be trusted per MCP server with
+`"samplingAutoApprove": true`. This suppresses both sampling confirmation
+dialogs only for that server; other servers retain interactive approval. Use it
+only for servers whose prompts and returned model output you trust. Canceled
+MCP requests also cancel their in-flight sampling model call, so an expired tool
+call cannot continue into a late response-approval dialog.
 
 Paste the server object supplied by PhpStorm under the project's `mcpServers`.
 Current PhpStorm versions provide this through **Settings → Tools → MCP Server →
@@ -164,10 +172,12 @@ Restart Pi after installation or configuration changes.
 ## Update pi-mcp-adapter
 
 This project imports the supported `createMcpAdapter()` factory. Upstream 2.15.0
-accepts only one prefix mode, so [`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs)
-applies a narrow compatibility patch during `npm install`: the existing naming
-helper also accepts the per-server mode map produced by this wrapper. The patch
-is version-pinned and fails loudly against an unreviewed adapter version.
+accepts only one prefix mode and only a global sampling trust setting.
+[`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs) applies a
+version-pinned compatibility patch during `npm install`: the naming helper
+accepts the per-server mode map, sampling trust can be selected per server, and
+the adapter forwards each MCP sampling request's cancellation signal. The patch
+fails loudly against an unreviewed adapter version.
 
 To download the newest upstream release without running the version-pinned
 postinstall patch:

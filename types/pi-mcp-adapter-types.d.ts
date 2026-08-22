@@ -15,6 +15,7 @@ export interface ServerEntry {
 	lifecycle?: "keep-alive" | "lazy" | "lazy-keep-alive" | "eager";
 	idleTimeout?: number;
 	requestTimeoutMs?: number;
+	samplingAutoApprove?: boolean;
 	exposeResources?: boolean;
 	directTools?: boolean | string[];
 	includeTools?: string[];

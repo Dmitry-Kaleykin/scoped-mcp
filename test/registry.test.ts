@@ -123,6 +123,36 @@ test("project can override an inherited server prefix without copying its defini
 	assert.deepEqual(selected.config.settings?.toolPrefix, { shared: "none" });
 });
 
+test("keeps per-server sampling trust scoped to its server", () => {
+	const paths = fixture();
+	const registry = parseRegistry({
+		[GLOBAL_SCOPE_KEY]: {
+			mcpServers: {
+				trusted: {
+					command: "trusted-command",
+					samplingAutoApprove: true,
+				},
+				untrusted: { command: "untrusted-command" },
+			},
+		},
+		project: {
+			path: paths.project,
+			mcpServers: { trusted: { samplingAutoApprove: false } },
+		},
+	});
+
+	const selected = selectScopedMcpConfig(registry, paths.project);
+
+	assert.deepEqual(selected.config.mcpServers.trusted, {
+		command: "trusted-command",
+		samplingAutoApprove: false,
+	});
+	assert.deepEqual(selected.config.mcpServers.untrusted, {
+		command: "untrusted-command",
+	});
+	assert.equal(selected.config.settings?.samplingAutoApprove, undefined);
+});
+
 test("rejects root-level toolPrefix settings", () => {
 	assert.throws(
 		() =>
@@ -146,6 +176,23 @@ test("rejects invalid per-server toolPrefix values", () => {
 				},
 			}),
 		/must be "server", "short", "none", or "mcp"/,
+	);
+});
+
+test("rejects invalid per-server samplingAutoApprove values", () => {
+	assert.throws(
+		() =>
+			parseRegistry({
+				[GLOBAL_SCOPE_KEY]: {
+					mcpServers: {
+						server: {
+							command: "server-command",
+							samplingAutoApprove: "yes",
+						},
+					},
+				},
+			}),
+		/must be true or false/,
 	);
 });
 

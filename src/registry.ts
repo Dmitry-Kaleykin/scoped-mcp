@@ -114,6 +114,14 @@ function parseScope(name: string, value: unknown): RegistryScope {
 					`[scoped-mcp] scope "${name}".mcpServers["${serverName}"].toolPrefix must be "server", "short", "none", or "mcp"`,
 				);
 			}
+			if (
+				server.samplingAutoApprove !== undefined &&
+				typeof server.samplingAutoApprove !== "boolean"
+			) {
+				throw new Error(
+					`[scoped-mcp] scope "${name}".mcpServers["${serverName}"].samplingAutoApprove must be true or false`,
+				);
+			}
 		}
 	}
 	if (settings !== undefined) {
@@ -154,7 +162,12 @@ export function isInheritedServerOverride(entry: ServerEntry): boolean {
 	const keys = Object.keys(entry);
 	return (
 		keys.length > 0 &&
-		keys.every((key) => key === "disabled" || key === "toolPrefix")
+		keys.every(
+			(key) =>
+				key === "disabled" ||
+				key === "toolPrefix" ||
+				key === "samplingAutoApprove",
+		)
 	);
 }
 
