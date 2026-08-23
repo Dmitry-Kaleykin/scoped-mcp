@@ -52,3 +52,48 @@ test("patched adapter scopes sampling trust and forwards request cancellation", 
 		/handleSamplingRequest\(options, request as CreateMessageRequest, context\.signal\)/,
 	);
 });
+
+test("patched adapter forwards MCP progress to Pi tool updates", () => {
+	const adapterRoot = new URL("../node_modules/pi-mcp-adapter/", import.meta.url);
+	const directTools = readFileSync(
+		fileURLToPath(new URL("direct-tools.ts", adapterRoot)),
+		"utf8",
+	);
+	const proxyModes = readFileSync(
+		fileURLToPath(new URL("proxy-modes.ts", adapterRoot)),
+		"utf8",
+	);
+	const index = readFileSync(
+		fileURLToPath(new URL("index.ts", adapterRoot)),
+		"utf8",
+	);
+	const renderer = readFileSync(
+		fileURLToPath(new URL("tool-result-renderer.ts", adapterRoot)),
+		"utf8",
+	);
+
+	assert.match(
+		directTools,
+		/execute\(_toolCallId, params, signal, onUpdate\)/,
+	);
+	assert.match(directTools, /onprogress: \(progress:/);
+	assert.match(directTools, /onUpdate\?\.\(\{/);
+	assert.match(directTools, /}, progressOptions\), ownedSignal\)/);
+
+	assert.match(proxyModes, /onUpdate\?: AgentToolUpdateCallback/);
+	assert.match(proxyModes, /onprogress: \(progress:/);
+	assert.match(proxyModes, /}, progressOptions\), ownedSignal\)/);
+	assert.match(
+		index,
+		/executeCall\(state, params\.tool, parsedArgs, params\.server, getPiTools, signal, onUpdate\)/,
+	);
+
+	assert.match(
+		renderer,
+		/formatMcpToolResultLines\(result, true\)\.lines\.join\("\\n"\)/,
+	);
+	assert.doesNotMatch(
+		renderer,
+		/if \(options\.isPartial\) \{\s*return new Text\(activeTheme\.fg\("warning", "Running MCP tool\.\.\."\)/,
+	);
+});

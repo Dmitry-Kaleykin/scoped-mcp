@@ -74,6 +74,13 @@ only for servers whose prompts and returned model output you trust. Canceled
 MCP requests also cancel their in-flight sampling model call, so an expired tool
 call cannot continue into a late response-approval dialog.
 
+Long-running MCP tools can publish standard MCP progress notifications. The
+version-pinned adapter patch forwards their latest message and percentage into
+Pi's live tool-result area for both direct tools and calls through the `mcp`
+gateway. This feedback is independent of a server's `debug` setting: `debug`
+still controls raw child-process stderr, while progress remains visible during
+normal operation.
+
 Paste the server object supplied by PhpStorm under the project's `mcpServers`.
 Current PhpStorm versions provide this through **Settings → Tools → MCP Server →
 Manual Client Configuration**.

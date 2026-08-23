@@ -17,6 +17,18 @@ const samplingHandlerPath = fileURLToPath(
 const serverManagerPath = fileURLToPath(
 	new URL("../node_modules/pi-mcp-adapter/server-manager.ts", import.meta.url),
 );
+const directToolsPath = fileURLToPath(
+	new URL("../node_modules/pi-mcp-adapter/direct-tools.ts", import.meta.url),
+);
+const proxyModesPath = fileURLToPath(
+	new URL("../node_modules/pi-mcp-adapter/proxy-modes.ts", import.meta.url),
+);
+const indexPath = fileURLToPath(
+	new URL("../node_modules/pi-mcp-adapter/index.ts", import.meta.url),
+);
+const toolResultRendererPath = fileURLToPath(
+	new URL("../node_modules/pi-mcp-adapter/tool-result-renderer.ts", import.meta.url),
+);
 const adapterPackage = JSON.parse(readFileSync(packagePath, "utf8"));
 
 if (adapterPackage.version !== supportedVersion) {
@@ -191,8 +203,122 @@ patchFile(samplingHandlerPath, [
 	},
 ]);
 
+patchFile(directToolsPath, [
+	{
+		original: "  return async function execute(_toolCallId, params, signal) {",
+		replacement: "  return async function execute(_toolCallId, params, signal, onUpdate) {",
+		label: "direct-tool progress callback",
+	},
+	{
+		original:
+			"    const requestOptions = state.manager.getRequestOptions?.(spec.serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);",
+		replacement: [
+			"    const requestOptions = state.manager.getRequestOptions?.(spec.serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);",
+			"    const progressOptions = {",
+			"      ...(requestOptions ?? {}),",
+			"      onprogress: (progress: { progress: number; total?: number; message?: string }) => {",
+			"        const percent = typeof progress.total === \"number\" && progress.total > 0",
+			"          ? Math.max(0, Math.min(100, Math.round((progress.progress / progress.total) * 100)))",
+			"          : null;",
+			"        const message = progress.message?.trim() || \"MCP tool is working\";",
+			"        onUpdate?.({",
+			"          content: [{ type: \"text\" as const, text: percent === null ? message : `${message} · ${percent}%` }],",
+			"          details: { server: spec.serverName, tool: spec.originalName, progress: progress.progress, total: progress.total },",
+			"        });",
+			"      },",
+			"    };",
+		].join("\n"),
+		label: "direct-tool MCP progress forwarding",
+	},
+	{
+		original: "        }, requestOptions), ownedSignal),",
+		replacement: "        }, progressOptions), ownedSignal),",
+		label: "direct-tool progress request options",
+	},
+]);
+
+patchFile(proxyModesPath, [
+	{
+		original:
+			'import type { AgentToolResult, ToolInfo } from "@earendil-works/pi-coding-agent";',
+		replacement:
+			'import type { AgentToolResult, AgentToolUpdateCallback, ToolInfo } from "@earendil-works/pi-coding-agent";',
+		label: "proxy progress callback type",
+	},
+	{
+		original: [
+			"  signal?: AbortSignal,",
+			"): Promise<ProxyToolResult> {",
+		].join("\n"),
+		replacement: [
+			"  signal?: AbortSignal,",
+			"  onUpdate?: AgentToolUpdateCallback<Record<string, unknown>>,",
+			"): Promise<ProxyToolResult> {",
+		].join("\n"),
+		label: "proxy progress callback parameter",
+	},
+	{
+		original:
+			"  const requestOptions = state.manager.getRequestOptions?.(serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);",
+		replacement: [
+			"  const requestOptions = state.manager.getRequestOptions?.(serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);",
+			"  const progressOptions = {",
+			"    ...(requestOptions ?? {}),",
+			"    onprogress: (progress: { progress: number; total?: number; message?: string }) => {",
+			"      const percent = typeof progress.total === \"number\" && progress.total > 0",
+			"        ? Math.max(0, Math.min(100, Math.round((progress.progress / progress.total) * 100)))",
+			"        : null;",
+			"      const message = progress.message?.trim() || \"MCP tool is working\";",
+			"      onUpdate?.({",
+			"        content: [{ type: \"text\" as const, text: percent === null ? message : `${message} · ${percent}%` }],",
+			"        details: { mode: \"call\", ...callIdentity, progress: progress.progress, total: progress.total },",
+			"      });",
+			"    },",
+			"  };",
+		].join("\n"),
+		label: "proxy MCP progress forwarding",
+	},
+	{
+		original: "      }, requestOptions), ownedSignal),",
+		replacement: "      }, progressOptions), ownedSignal),",
+		label: "proxy progress request options",
+	},
+]);
+
+patchFile(indexPath, [
+	{
+		original: "      }, signal, _onUpdate, _ctx) {",
+		replacement: "      }, signal, onUpdate, _ctx) {",
+		label: "proxy Pi update callback",
+	},
+	{
+		original:
+			"          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools, signal);",
+		replacement:
+			"          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools, signal, onUpdate);",
+		label: "proxy Pi progress routing",
+	},
+]);
+
+patchFile(toolResultRendererPath, [
+	{
+		original: [
+			"  if (options.isPartial) {",
+			'    return new Text(activeTheme.fg("warning", "Running MCP tool..."), 0, 0);',
+			"  }",
+		].join("\n"),
+		replacement: [
+			"  if (options.isPartial) {",
+			"    const progress = formatMcpToolResultLines(result, true).lines.join(\"\\n\");",
+			'    return new Text(activeTheme.fg("warning", progress || "Running MCP tool..."), 0, 0);',
+			"  }",
+		].join("\n"),
+		label: "partial MCP progress rendering",
+	},
+]);
+
 if (changed) {
 	console.info(
-		`scoped-mcp: patched pi-mcp-adapter ${supportedVersion} for per-server prefixes and sampling trust`,
+		`scoped-mcp: patched pi-mcp-adapter ${supportedVersion} for per-server prefixes, sampling trust, and progress updates`,
 	);
 }
