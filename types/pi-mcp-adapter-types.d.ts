@@ -1,4 +1,4 @@
-export type ToolPrefixMode = "server" | "none" | "short" | "mcp";
+export type ToolPrefix = "server" | "none" | "short" | "mcp";
 
 export interface ServerEntry {
 	command?: string;
@@ -23,16 +23,23 @@ export interface ServerEntry {
 	debug?: boolean;
 	trace?: boolean;
 	disabled?: boolean;
-	toolPrefix?: ToolPrefixMode;
+	toolPrefix?: ToolPrefix;
 }
 
 export interface McpSettings {
-	toolPrefix?: ToolPrefixMode | Record<string, ToolPrefixMode>;
+	toolPrefix?: ToolPrefix;
 	showStatusIcon?: boolean;
+	mcpFooterStatus?: "full" | "compact" | "off";
+	notifyOnStartupConnect?: boolean;
 	idleTimeout?: number;
 	requestTimeoutMs?: number;
 	directTools?: boolean;
+	warnOnLargeDirectTools?: boolean;
+	scriptMode?: boolean;
+	toolResultRendering?: "compact" | "boxed";
+	collapsedResultLines?: 1 | 2 | 3;
 	disableProxyTool?: boolean;
+	freezeDirectTools?: boolean;
 	autoAuth?: boolean;
 	sampling?: boolean;
 	samplingAutoApprove?: boolean;

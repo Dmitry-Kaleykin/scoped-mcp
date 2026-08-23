@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const supportedVersion = "2.15.0";
+const supportedVersion = "2.27.0";
 const packagePath = fileURLToPath(
 	new URL("../node_modules/pi-mcp-adapter/package.json", import.meta.url),
 );
@@ -33,7 +33,7 @@ const adapterPackage = JSON.parse(readFileSync(packagePath, "utf8"));
 
 if (adapterPackage.version !== supportedVersion) {
 	throw new Error(
-		`scoped-mcp's per-server tool-prefix patch supports pi-mcp-adapter ${supportedVersion}, but ${adapterPackage.version} is installed. Review and update scripts/patch-adapter.mjs before upgrading the adapter.`,
+		`scoped-mcp's compatibility patch supports pi-mcp-adapter ${supportedVersion}, but ${adapterPackage.version} is installed. Review and update scripts/patch-adapter.mjs before upgrading the adapter.`,
 	);
 }
 
@@ -57,30 +57,6 @@ function patchFile(path, edits) {
 }
 
 patchFile(typesPath, [
-	{
-		original: 'export type ToolPrefix = "server" | "none" | "short" | "mcp";',
-		replacement: [
-			'export type ToolPrefixMode = "server" | "none" | "short" | "mcp";',
-			"export type ToolPrefix = ToolPrefixMode | Readonly<Record<string, ToolPrefixMode>>;",
-		].join("\n"),
-		label: "prefix-map type",
-	},
-	{
-		original: [
-			"export function getServerPrefix(",
-			"  serverName: string,",
-			"  mode: ToolPrefix",
-			"): string {",
-		].join("\n"),
-		replacement: [
-			"export function getServerPrefix(",
-			"  serverName: string,",
-			"  mode: ToolPrefix",
-			"): string {",
-			'  if (typeof mode !== "string") mode = mode[serverName] ?? "server";',
-		].join("\n"),
-		label: "per-server prefix lookup",
-	},
 	{
 		original: "  requestTimeoutMs?: number; // milliseconds, overrides global request timeout when > 0",
 		replacement: [
@@ -110,16 +86,6 @@ patchFile(initPath, [
 
 patchFile(serverManagerPath, [
 	{
-		original: "    const client = this.createClient(name);",
-		replacement: "    const client = this.createClient(name, definition);",
-		label: "sampling server definition routing",
-	},
-	{
-		original: "  private createClient(serverName: string): Client {",
-		replacement: "  private createClient(serverName: string, definition: ServerDefinition): Client {",
-		label: "sampling client definition",
-	},
-	{
 		original: "      registerSamplingHandler(client, { ...this.samplingConfig, serverName });",
 		replacement: [
 			"      registerSamplingHandler(client, {",
@@ -143,13 +109,13 @@ patchFile(samplingHandlerPath, [
 	},
 	{
 		original: [
-			'  client.setRequestHandler("sampling/createMessage", (request) => {',
-			"    return handleSamplingRequest(options, request as CreateMessageRequest);",
+			'  client.setRequestHandler("sampling/createMessage", request => {',
+			"    return handleSamplingRequest(options, request);",
 			"  });",
 		].join("\n"),
 		replacement: [
 			'  client.setRequestHandler("sampling/createMessage", (request, context) => {',
-			"    return handleSamplingRequest(options, request as CreateMessageRequest, context.signal);",
+			"    return handleSamplingRequest(options, request, context.signal);",
 			"  });",
 		].join("\n"),
 		label: "sampling request cancellation routing",
@@ -248,10 +214,12 @@ patchFile(proxyModesPath, [
 	{
 		original: [
 			"  signal?: AbortSignal,",
+			'  origin?: "proxy" | "script",',
 			"): Promise<ProxyToolResult> {",
 		].join("\n"),
 		replacement: [
 			"  signal?: AbortSignal,",
+			'  origin?: "proxy" | "script",',
 			"  onUpdate?: AgentToolUpdateCallback<Record<string, unknown>>,",
 			"): Promise<ProxyToolResult> {",
 		].join("\n"),
@@ -287,15 +255,17 @@ patchFile(proxyModesPath, [
 
 patchFile(indexPath, [
 	{
-		original: "      }, signal, _onUpdate, _ctx) {",
-		replacement: "      }, signal, onUpdate, _ctx) {",
+		original:
+			"      }, signal: AbortSignal | undefined, _onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined, _ctx: ExtensionContext) {",
+		replacement:
+			"      }, signal: AbortSignal | undefined, onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined, _ctx: ExtensionContext) {",
 		label: "proxy Pi update callback",
 	},
 	{
 		original:
-			"          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools, signal);",
+			"          return executeCall(state, dispatchParams.tool, parsedArgs, dispatchParams.server, getPiTools, signal);",
 		replacement:
-			"          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools, signal, onUpdate);",
+			'          return executeCall(state, dispatchParams.tool, parsedArgs, dispatchParams.server, getPiTools, signal, "proxy", onUpdate);',
 		label: "proxy Pi progress routing",
 	},
 ]);
@@ -319,6 +289,6 @@ patchFile(toolResultRendererPath, [
 
 if (changed) {
 	console.info(
-		`scoped-mcp: patched pi-mcp-adapter ${supportedVersion} for per-server prefixes, sampling trust, and progress updates`,
+		`scoped-mcp: patched pi-mcp-adapter ${supportedVersion} for per-server sampling trust and progress updates`,
 	);
 }

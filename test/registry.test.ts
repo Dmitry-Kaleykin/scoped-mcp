@@ -61,11 +61,10 @@ test("merges global MCPs with the matching project", () => {
 	assert.deepEqual(selected.config, {
 		mcpServers: {
 			global: { command: "global-command" },
-			phpstorm: { command: "phpstorm-command" },
+			phpstorm: { command: "phpstorm-command", toolPrefix: "mcp" },
 		},
 		settings: {
 			idleTimeout: 10,
-			toolPrefix: { phpstorm: "mcp" },
 		},
 	});
 });
@@ -91,9 +90,10 @@ test("inherits per-server prefixes through disabled-only project overrides", () 
 
 	assert.deepEqual(selected.config.mcpServers.shared, {
 		command: "shared-command",
+		toolPrefix: "none",
 		disabled: true,
 	});
-	assert.deepEqual(selected.config.settings?.toolPrefix, { shared: "none" });
+	assert.equal(selected.config.settings, undefined);
 });
 
 test("project can override an inherited server prefix without copying its definition", () => {
@@ -119,8 +119,9 @@ test("project can override an inherited server prefix without copying its defini
 	assert.deepEqual(selected.config.mcpServers.shared, {
 		url: "https://global.invalid/mcp",
 		headers: { Authorization: "global-secret" },
+		toolPrefix: "none",
 	});
-	assert.deepEqual(selected.config.settings?.toolPrefix, { shared: "none" });
+	assert.equal(selected.config.settings, undefined);
 });
 
 test("keeps per-server sampling trust scoped to its server", () => {

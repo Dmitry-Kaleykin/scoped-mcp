@@ -4,23 +4,35 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
 	formatToolName,
-	getServerPrefix,
+	resolveToolPrefix,
 } from "../node_modules/pi-mcp-adapter/types.ts";
 
-test("patched adapter resolves prefix modes per server", () => {
-	const prefixes = {
-		"browser-mcp": "short",
-		docs: "none",
-		github: "mcp",
-	};
-
+test("upstream adapter resolves prefix modes per server", () => {
 	assert.equal(
-		formatToolName("open.page", "browser-mcp", prefixes),
+		formatToolName(
+			"open.page",
+			"browser-mcp",
+			resolveToolPrefix({ toolPrefix: "short" }, "server"),
+		),
 		"browser_open_page",
 	);
-	assert.equal(formatToolName("search", "docs", prefixes), "search");
-	assert.equal(formatToolName("issue", "github", prefixes), "mcp__github_issue");
-	assert.equal(getServerPrefix("unconfigured", prefixes), "unconfigured");
+	assert.equal(
+		formatToolName(
+			"search",
+			"docs",
+			resolveToolPrefix({ toolPrefix: "none" }, "server"),
+		),
+		"search",
+	);
+	assert.equal(
+		formatToolName(
+			"issue",
+			"github",
+			resolveToolPrefix({ toolPrefix: "mcp" }, "server"),
+		),
+		"mcp__github_issue",
+	);
+	assert.equal(resolveToolPrefix({}, "short"), "short");
 });
 
 test("patched adapter scopes sampling trust and forwards request cancellation", () => {
@@ -49,7 +61,7 @@ test("patched adapter scopes sampling trust and forwards request cancellation", 
 	);
 	assert.match(
 		handler,
-		/handleSamplingRequest\(options, request as CreateMessageRequest, context\.signal\)/,
+		/handleSamplingRequest\(options, request, context\.signal\)/,
 	);
 });
 
@@ -85,7 +97,7 @@ test("patched adapter forwards MCP progress to Pi tool updates", () => {
 	assert.match(proxyModes, /}, progressOptions\), ownedSignal\)/);
 	assert.match(
 		index,
-		/executeCall\(state, params\.tool, parsedArgs, params\.server, getPiTools, signal, onUpdate\)/,
+		/executeCall\(state, dispatchParams\.tool, parsedArgs, dispatchParams\.server, getPiTools, signal, "proxy", onUpdate\)/,
 	);
 
 	assert.match(

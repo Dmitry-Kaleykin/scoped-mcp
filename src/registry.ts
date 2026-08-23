@@ -13,7 +13,7 @@ import type {
 	McpConfig,
 	McpSettings,
 	ServerEntry,
-	ToolPrefixMode,
+	ToolPrefix,
 } from "pi-mcp-adapter/types";
 
 export const GLOBAL_SCOPE_KEY = "$global";
@@ -142,7 +142,7 @@ function parseScope(name: string, value: unknown): RegistryScope {
 	};
 }
 
-function isToolPrefixMode(value: unknown): value is ToolPrefixMode {
+function isToolPrefixMode(value: unknown): value is ToolPrefix {
 	return (
 		value === "server" ||
 		value === "short" ||
@@ -181,14 +181,6 @@ function mergeScopes(globalScope: RegistryScope, projectScope?: RegistryScope): 
 				: projectEntry;
 	}
 
-	const toolPrefixes: Record<string, ToolPrefixMode> = {};
-	const mcpServers = Object.fromEntries(
-		Object.entries(scopedServers).map(([name, entry]) => {
-			const { toolPrefix, ...upstreamEntry } = entry;
-			if (toolPrefix !== undefined) toolPrefixes[name] = toolPrefix;
-			return [name, upstreamEntry];
-		}),
-	);
 	const mergedSettings =
 		globalScope.settings || projectScope?.settings
 			? {
@@ -198,16 +190,8 @@ function mergeScopes(globalScope: RegistryScope, projectScope?: RegistryScope): 
 			: undefined;
 
 	return {
-		mcpServers,
-		settings:
-			mergedSettings || Object.keys(toolPrefixes).length > 0
-				? {
-						...(mergedSettings ?? {}),
-						...(Object.keys(toolPrefixes).length > 0
-							? { toolPrefix: toolPrefixes }
-							: {}),
-					}
-				: undefined,
+		mcpServers: scopedServers,
+		settings: mergedSettings,
 	};
 }
 

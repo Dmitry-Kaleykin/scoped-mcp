@@ -17,7 +17,7 @@
     "check:adapter": "npm outdated pi-mcp-adapter"
   },
   "dependencies": {
-    "pi-mcp-adapter": "2.15.0"
+    "pi-mcp-adapter": "2.27.0"
   },
   "devDependencies": {
     "@types/node": "^24.1.0",

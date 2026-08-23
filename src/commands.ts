@@ -1,4 +1,4 @@
-import type { McpConfig, ServerEntry, ToolPrefixMode } from "pi-mcp-adapter/types";
+import type { ServerEntry, ToolPrefix } from "pi-mcp-adapter/types";
 import { openRegistryInTerminal } from "./editor.ts";
 import type { ScopedCommandContext, ScopedPiApi } from "./pi-api.ts";
 import {
@@ -32,12 +32,8 @@ function directToolsLabel(entry: ServerEntry): string {
 	return "proxy";
 }
 
-function toolPrefixLabel(config: McpConfig, serverName: string): ToolPrefixMode {
-	const configured = config.settings?.toolPrefix;
-	return (
-		(typeof configured === "string" ? configured : configured?.[serverName]) ??
-		"server"
-	);
+function toolPrefixLabel(entry: ServerEntry): ToolPrefix {
+	return entry.toolPrefix ?? "server";
 }
 
 function serverOrigin(
@@ -86,7 +82,7 @@ export function formatScopedMcpStatus(
 				projectServers[name],
 			);
 			lines.push(
-				`  ${name}: ${enabled}, ${directToolsLabel(effective)}, prefix: ${toolPrefixLabel(selection.config, name)}, scope: ${origin}`,
+				`  ${name}: ${enabled}, ${directToolsLabel(effective)}, prefix: ${toolPrefixLabel(effective)}, scope: ${origin}`,
 			);
 		}
 	}

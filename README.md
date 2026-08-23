@@ -59,10 +59,10 @@ The one exception is a project entry containing only `disabled`, `toolPrefix`,
 an inherited global server.
 `settings` are shallow-merged, with project values taking precedence.
 
-Tool prefixes are configured per MCP server with `toolPrefix`. The supported
-values are the same as upstream: `"server"` (the default), `"short"`, `"none"`,
-and `"mcp"`. Root-level `settings.toolPrefix` is intentionally rejected by this
-wrapper; move it onto each server that needs non-default behavior. A project
+Tool prefixes use upstream's native per-server `toolPrefix` setting. The
+supported values are `"server"` (the default), `"short"`, `"none"`, and `"mcp"`.
+Root-level `settings.toolPrefix` is intentionally rejected by this wrapper;
+move it onto each server that needs non-default behavior. A project
 can override an inherited global server's prefix without copying its connection
 details. A complete project server definition replaces the prefix together with
 the rest of the definition.
@@ -80,6 +80,10 @@ Pi's live tool-result area for both direct tools and calls through the `mcp`
 gateway. This feedback is independent of a server's `debug` setting: `debug`
 still controls raw child-process stderr, while progress remains visible during
 normal operation.
+
+Adapter 2.27 also registers the `mcpScript` tool by default. To retain the
+older tool surface, set `"scriptMode": false` under a scope's `settings` (usually
+`$global`).
 
 Paste the server object supplied by PhpStorm under the project's `mcpServers`.
 Current PhpStorm versions provide this through **Settings → Tools → MCP Server →
@@ -178,13 +182,13 @@ Restart Pi after installation or configuration changes.
 
 ## Update pi-mcp-adapter
 
-This project imports the supported `createMcpAdapter()` factory. Upstream 2.15.0
-accepts only one prefix mode and only a global sampling trust setting.
-[`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs) applies a
-version-pinned compatibility patch during `npm install`: the naming helper
-accepts the per-server mode map, sampling trust can be selected per server, and
-the adapter forwards each MCP sampling request's cancellation signal. The patch
-fails loudly against an unreviewed adapter version.
+This project imports the supported `createMcpAdapter()` factory. Upstream 2.27.0
+natively accepts per-server tool prefixes. It still has only a global sampling
+trust setting and does not forward MCP progress notifications to Pi tool
+updates. [`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs) applies a
+version-pinned compatibility patch for those two remaining wrapper features
+during `npm install`. The patch also forwards each MCP sampling request's
+cancellation signal and fails loudly against an unreviewed adapter version.
 
 To download the newest upstream release without running the version-pinned
 postinstall patch:
@@ -194,9 +198,9 @@ cd /Users/donais/Documents/Projects/scoped-mcp
 npm run update:adapter
 ```
 
-Review upstream's prefix implementation. If the patch is still needed, update
-`supportedVersion` and any changed source anchors in `scripts/patch-adapter.mjs`.
-Then apply it, run the checks, and restart Pi:
+Review whether the remaining sampling/progress patch is still needed. If it is,
+update `supportedVersion` and any changed source anchors in
+`scripts/patch-adapter.mjs`. Then apply it, run the checks, and restart Pi:
 
 ```sh
 npm install
