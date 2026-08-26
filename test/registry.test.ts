@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
 	GLOBAL_SCOPE_KEY,
+	getRegistryPath,
 	parseRegistry,
 	selectScopedMcpConfig,
 } from "../src/registry.ts";
@@ -19,6 +20,24 @@ function fixture() {
 	mkdirSync(outside);
 	return { root, project, nestedProject, child, outside };
 }
+
+test("uses a consistently named config in Pi's extensions directory", () => {
+	const agentDir = join(tmpdir(), "custom-pi-agent");
+
+	assert.equal(
+		getRegistryPath({ PI_CODING_AGENT_DIR: agentDir }),
+		join(agentDir, "extensions", "scoped-mcp", "scoped-mcp.json"),
+	);
+});
+
+test("supports an explicitly configured scoped-mcp path", () => {
+	const configPath = join(tmpdir(), "custom-scoped-mcp.json");
+
+	assert.equal(
+		getRegistryPath({ PI_SCOPED_MCP_CONFIG: configPath }),
+		configPath,
+	);
+});
 
 test("loads global MCPs outside configured project paths", () => {
 	const paths = fixture();

@@ -12,13 +12,14 @@ A small Pi package that supplies `pi-mcp-adapter` with:
 The default registry is:
 
 ```text
-~/.pi/agent/mcp-projects.json
+~/.pi/agent/extensions/scoped-mcp/scoped-mcp.json
 ```
 
-If `PI_CODING_AGENT_DIR` is set, the registry lives in that directory instead.
-Set `PI_MCP_PROJECTS_CONFIG` to use an entirely different file.
+If `PI_CODING_AGENT_DIR` is set, the registry lives in its `extensions`
+directory instead. Set `PI_SCOPED_MCP_CONFIG` to use an entirely different
+file.
 
-Start with [`mcp-projects.example.json`](./mcp-projects.example.json):
+Start with [`scoped-mcp.example.json`](./scoped-mcp.example.json):
 
 ```json
 {

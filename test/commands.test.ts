@@ -16,7 +16,7 @@ function fixture() {
 	const root = mkdtempSync(join(tmpdir(), "scoped-mcp-commands-"));
 	const project = join(root, "project");
 	const outside = join(root, "outside");
-	const registryPath = join(root, "mcp-projects.json");
+	const registryPath = join(root, "scoped-mcp.json");
 	mkdirSync(project);
 	mkdirSync(outside);
 	writeScopedMcpRegistry(registryPath, {
@@ -171,7 +171,7 @@ test("project toggles preserve an inherited server's prefix override", () => {
 test("status reports registry, scope, origin, state, and direct mode", () => {
 	const paths = fixture();
 	const status = formatScopedMcpStatus(paths.project, {
-		PI_MCP_PROJECTS_CONFIG: paths.registryPath,
+		PI_SCOPED_MCP_CONFIG: paths.registryPath,
 	});
 
 	assert.match(status, new RegExp(`Registry: ${paths.registryPath}`));

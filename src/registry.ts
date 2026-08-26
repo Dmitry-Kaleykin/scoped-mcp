@@ -17,7 +17,7 @@ import type {
 } from "pi-mcp-adapter/types";
 
 export const GLOBAL_SCOPE_KEY = "$global";
-export const REGISTRY_PATH_ENV = "PI_MCP_PROJECTS_CONFIG";
+export const REGISTRY_PATH_ENV = "PI_SCOPED_MCP_CONFIG";
 
 export interface RegistryScope {
 	path?: string;
@@ -50,7 +50,15 @@ function defaultAgentDir(env: NodeJS.ProcessEnv): string {
 
 export function getRegistryPath(env: NodeJS.ProcessEnv = process.env): string {
 	const configured = env[REGISTRY_PATH_ENV];
-	return resolve(configured || join(defaultAgentDir(env), "mcp-projects.json"));
+	return resolve(
+		configured ||
+			join(
+				defaultAgentDir(env),
+				"extensions",
+				"scoped-mcp",
+				"scoped-mcp.json",
+			),
+	);
 }
 
 function expandHome(path: string): string {
@@ -222,7 +230,7 @@ export function writeScopedMcpRegistry(
 	mkdirSync(parent, { recursive: true, mode: 0o700 });
 	const temporaryPath = join(
 		parent,
-		`.${Date.now()}-${process.pid}-mcp-projects.json.tmp`,
+		`.${Date.now()}-${process.pid}-scoped-mcp.json.tmp`,
 	);
 
 	try {
