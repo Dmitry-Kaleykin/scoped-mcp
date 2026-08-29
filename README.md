@@ -73,6 +73,34 @@ only `disabled`, `toolPrefix`, `samplingAutoApprove`, or a combination of them;
 it acts as a safe override for an inherited server. `settings` are
 shallow-merged in the same order.
 
+Inside a profile's MCP server definition, `${scope.path}` is replaced with the
+canonical path of the project scope that selected the profile. Replacement is
+performed directly on string values, including values nested in `args`, `env`,
+or headers; it does not invoke a shell. The placeholder remains unchanged in
+the registry when using `/scoped-mcp enable` or `/scoped-mcp disable`.
+
+For example, a project-aware server can be shared without copying its project
+path into the profile:
+
+```json
+{
+  "$profiles": {
+    "scribery": {
+      "mcpServers": {
+        "scribery": {
+          "command": "/absolute/path/to/scribery-mcp",
+          "args": ["--project", "${scope.path}", "--tools", "search_codebase"]
+        }
+      }
+    }
+  },
+  "my-project": {
+    "path": "/Users/me/Projects/my-project",
+    "profiles": ["scribery"]
+  }
+}
+```
+
 Tool prefixes use upstream's native per-server `toolPrefix` setting. The
 supported values are `"server"` (the default), `"short"`, `"none"`, and `"mcp"`.
 Root-level `settings.toolPrefix` is intentionally rejected by this wrapper;

@@ -5,9 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 import {
 	GLOBAL_SCOPE_KEY,
+	getRegistryProfiles,
 	getRegistryPath,
 	parseRegistry,
 	PROFILES_KEY,
+	SCOPE_PATH_PLACEHOLDER,
 	selectScopedMcpConfig,
 } from "../src/registry.ts";
 
@@ -160,6 +162,44 @@ test("merges global, ordered profiles, and project configuration", () => {
 	});
 	assert.equal(selected.serverOrigins.phpstorm, "profile php");
 	assert.equal(selected.serverOrigins.shared, "project override");
+});
+
+test("resolves the scope path placeholder in profile server definitions", () => {
+	const paths = fixture();
+	const registry = parseRegistry({
+		[PROFILES_KEY]: {
+			scribery: {
+				mcpServers: {
+					scribery: {
+						command: "scribery-mcp",
+						args: [
+							"--project",
+							SCOPE_PATH_PLACEHOLDER,
+							`root=${SCOPE_PATH_PLACEHOLDER}`,
+						],
+						env: { SCRIBERY_ROOT: SCOPE_PATH_PLACEHOLDER },
+					},
+				},
+			},
+		},
+		project: { path: paths.project, profiles: ["scribery"] },
+	});
+
+	const selected = selectScopedMcpConfig(registry, paths.project);
+	const canonicalProject = realpathSync.native(paths.project);
+
+	assert.deepEqual(selected.config.mcpServers.scribery?.args, [
+		"--project",
+		canonicalProject,
+		`root=${canonicalProject}`,
+	]);
+	assert.deepEqual(selected.config.mcpServers.scribery?.env, {
+		SCRIBERY_ROOT: canonicalProject,
+	});
+	assert.deepEqual(
+		getRegistryProfiles(registry).scribery?.mcpServers?.scribery?.args,
+		["--project", SCOPE_PATH_PLACEHOLDER, `root=${SCOPE_PATH_PLACEHOLDER}`],
+	);
 });
 
 test("applies profiles in listed order and lets the project replace them", () => {

@@ -18,6 +18,7 @@ import type {
 
 export const GLOBAL_SCOPE_KEY = "$global";
 export const PROFILES_KEY = "$profiles";
+export const SCOPE_PATH_PLACEHOLDER = "${scope.path}";
 export const REGISTRY_PATH_ENV = "PI_SCOPED_MCP_CONFIG";
 
 export interface RegistryProfile {
@@ -263,11 +264,47 @@ interface NamedLayer {
 
 interface ActiveLayer extends NamedLayer {
 	kind: "global" | "profile" | "project";
+	source: RegistryProfile;
+}
+
+function interpolateScopePath(value: unknown, projectPath: string): unknown {
+	if (typeof value === "string") {
+		return value.replaceAll(SCOPE_PATH_PLACEHOLDER, projectPath);
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => interpolateScopePath(item, projectPath));
+	}
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [
+				key,
+				interpolateScopePath(item, projectPath),
+			]),
+		);
+	}
+	return value;
+}
+
+function resolveProfileScopePath(
+	profile: RegistryProfile,
+	projectPath: string,
+): RegistryProfile {
+	if (!profile.mcpServers) return profile;
+	return {
+		...profile,
+		mcpServers: Object.fromEntries(
+			Object.entries(profile.mcpServers).map(([name, entry]) => [
+				name,
+				interpolateScopePath(entry, projectPath) as ServerEntry,
+			]),
+		),
+	};
 }
 
 function activeLayers(
 	registry: ScopedMcpRegistry,
 	projectName?: string,
+	projectPath?: string,
 ): ActiveLayer[] {
 	const projectScope = projectName ? registry[projectName] : undefined;
 	const profiles = getRegistryProfiles(registry);
@@ -276,14 +313,26 @@ function activeLayers(
 			kind: "global",
 			label: GLOBAL_SCOPE_KEY,
 			scope: registry[GLOBAL_SCOPE_KEY] ?? {},
+			source: registry[GLOBAL_SCOPE_KEY] ?? {},
 		},
-		...(projectScope?.profiles ?? []).map((name) => ({
-			kind: "profile" as const,
-			label: `profile ${name}`,
-			scope: profiles[name] as RegistryProfile,
-		})),
+		...(projectScope?.profiles ?? []).map((name) => {
+			const source = profiles[name] as RegistryProfile;
+			return {
+				kind: "profile" as const,
+				label: `profile ${name}`,
+				scope: projectPath ? resolveProfileScopePath(source, projectPath) : source,
+				source,
+			};
+		}),
 		...(projectScope
-			? [{ kind: "project" as const, label: projectName as string, scope: projectScope }]
+			? [
+					{
+						kind: "project" as const,
+						label: projectName as string,
+						scope: projectScope,
+						source: projectScope,
+					},
+				]
 			: []),
 	];
 }
@@ -377,7 +426,7 @@ export function selectScopedMcpConfig(
 		.filter(({ projectPath }) => containsPath(projectPath, canonicalCwd))
 		.sort((left, right) => right.projectPath.length - left.projectPath.length)[0];
 	const profileNames = match?.scope.profiles ?? [];
-	const merged = mergeLayers(activeLayers(registry, match?.name));
+	const merged = mergeLayers(activeLayers(registry, match?.name, match?.projectPath));
 
 	return {
 		config: merged.config,
@@ -429,7 +478,7 @@ export function setServerDisabled(options: {
 	);
 	const projectName = selection.projectName;
 	const projectScope = projectName ? registry[projectName] : undefined;
-	const layers = activeLayers(registry, projectName);
+	const layers = activeLayers(registry, projectName, selection.projectPath);
 	let targetLayer: ActiveLayer | undefined;
 	const target = options.target ?? "effective";
 	if (target === "global") {
@@ -464,7 +513,7 @@ export function setServerDisabled(options: {
 	const inherited = mergeLayers(layers.slice(0, targetIndex)).config.mcpServers[
 		options.serverName
 	];
-	const currentEntry = targetLayer.scope.mcpServers?.[options.serverName];
+	const currentEntry = targetLayer.source.mcpServers?.[options.serverName];
 	if (!currentEntry && !inherited) {
 		throw new Error(
 			`[scoped-mcp] Server "${options.serverName}" is not defined in project "${projectName}" or its inherited scopes`,
@@ -473,7 +522,7 @@ export function setServerDisabled(options: {
 
 	const nextEntry = toggledEntry(currentEntry, inherited, options.disabled);
 	const changed = JSON.stringify(nextEntry) !== JSON.stringify(currentEntry);
-	const targetScope = targetLayer.scope;
+	const targetScope = targetLayer.source;
 	targetScope.mcpServers ??= {};
 	if (nextEntry) {
 		targetScope.mcpServers[options.serverName] = nextEntry;

@@ -80,7 +80,12 @@ test("default toggle updates a profile-owned server", () => {
 	const registry = readScopedMcpRegistry(paths.registryPath);
 	registry[PROFILES_KEY] = {
 		reusable: {
-			mcpServers: { profiled: { command: "profile-command" } },
+			mcpServers: {
+				profiled: {
+					command: "profile-command",
+					args: ["--project", "${scope.path}"],
+				},
+			},
 		},
 	};
 	(registry.project as { profiles?: string[] }).profiles = ["reusable"];
@@ -94,11 +99,11 @@ test("default toggle updates a profile-owned server", () => {
 	});
 
 	assert.equal(result.scopeName, "profile reusable");
-	assert.equal(
-		getRegistryProfiles(readScopedMcpRegistry(paths.registryPath)).reusable
-			?.mcpServers?.profiled?.disabled,
-		true,
-	);
+	const profileEntry = getRegistryProfiles(
+		readScopedMcpRegistry(paths.registryPath),
+	).reusable?.mcpServers?.profiled;
+	assert.equal(profileEntry?.disabled, true);
+	assert.deepEqual(profileEntry?.args, ["--project", "${scope.path}"]);
 });
 
 test("--project can locally override a profile-owned server", () => {
