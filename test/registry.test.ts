@@ -84,6 +84,82 @@ test("does not activate profiles outside a project that references them", () => 
 	});
 });
 
+test("activates global profiles before the global configuration", () => {
+	const paths = fixture();
+	const registry = parseRegistry({
+		[PROFILES_KEY]: {
+			common: {
+				mcpServers: {
+					profiled: { command: "profile-command" },
+					shared: { command: "shared-command" },
+				},
+				settings: { idleTimeout: 10 },
+			},
+		},
+		[GLOBAL_SCOPE_KEY]: {
+			profiles: ["common"],
+			mcpServers: { shared: { toolPrefix: "none" } },
+			settings: { idleTimeout: 20 },
+		},
+	});
+
+	const selected = selectScopedMcpConfig(registry, paths.outside);
+
+	assert.deepEqual(selected.profileNames, ["common"]);
+	assert.deepEqual(selected.config, {
+		mcpServers: {
+			profiled: { command: "profile-command" },
+			shared: { command: "shared-command", toolPrefix: "none" },
+		},
+		settings: { idleTimeout: 20 },
+	});
+	assert.equal(selected.serverOrigins.profiled, "profile common (global)");
+	assert.equal(selected.serverOrigins.shared, "$global override");
+});
+
+test("applies project profiles after global profiles and global configuration", () => {
+	const paths = fixture();
+	const registry = parseRegistry({
+		[PROFILES_KEY]: {
+			common: { mcpServers: { server: { command: "common" } } },
+			project: { mcpServers: { server: { command: "project-profile" } } },
+		},
+		[GLOBAL_SCOPE_KEY]: {
+			profiles: ["common"],
+			mcpServers: { server: { command: "global" } },
+		},
+		project: { path: paths.project, profiles: ["project"] },
+	});
+
+	const selected = selectScopedMcpConfig(registry, paths.project);
+
+	assert.deepEqual(selected.profileNames, ["common", "project"]);
+	assert.deepEqual(selected.config.mcpServers.server, {
+		command: "project-profile",
+	});
+	assert.equal(selected.serverOrigins.server, "profile project");
+});
+
+test("rejects scope path placeholders in globally activated profiles", () => {
+	assert.throws(
+		() =>
+			parseRegistry({
+				[PROFILES_KEY]: {
+					projectAware: {
+						mcpServers: {
+							server: {
+								command: "server-command",
+								args: [SCOPE_PATH_PLACEHOLDER],
+							},
+						},
+					},
+				},
+				[GLOBAL_SCOPE_KEY]: { profiles: ["projectAware"] },
+			}),
+		/activated by "\$global" and must not use \$\{scope\.path\}/,
+	);
+});
+
 test("merges global MCPs with the matching project", () => {
 	const paths = fixture();
 	const registry = parseRegistry({

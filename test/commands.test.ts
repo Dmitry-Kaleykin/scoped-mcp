@@ -106,6 +106,72 @@ test("default toggle updates a profile-owned server", () => {
 	assert.deepEqual(profileEntry?.args, ["--project", "${scope.path}"]);
 });
 
+test("default toggle updates a globally activated profile", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	registry[PROFILES_KEY] = {
+		common: {
+			mcpServers: { profiled: { command: "profile-command" } },
+		},
+	};
+	(registry[GLOBAL_SCOPE_KEY] as { profiles?: string[] }).profiles = ["common"];
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	const result = setServerDisabled({
+		cwd: paths.outside,
+		disabled: true,
+		registryPath: paths.registryPath,
+		serverName: "profiled",
+	});
+
+	assert.equal(result.scopeName, "profile common (global)");
+	assert.equal(
+		getRegistryProfiles(readScopedMcpRegistry(paths.registryPath)).common
+			?.mcpServers?.profiled?.disabled,
+		true,
+	);
+});
+
+test("--global can override a server inherited from a global profile", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	registry[PROFILES_KEY] = {
+		common: {
+			mcpServers: { profiled: { command: "profile-command" } },
+		},
+	};
+	(registry[GLOBAL_SCOPE_KEY] as { profiles?: string[] }).profiles = ["common"];
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	setServerDisabled({
+		cwd: paths.outside,
+		disabled: true,
+		registryPath: paths.registryPath,
+		serverName: "profiled",
+		target: "global",
+	});
+
+	let updated = readScopedMcpRegistry(paths.registryPath);
+	assert.deepEqual(updated[GLOBAL_SCOPE_KEY]?.mcpServers?.profiled, {
+		disabled: true,
+	});
+	assert.equal(
+		getRegistryProfiles(updated).common?.mcpServers?.profiled?.disabled,
+		undefined,
+	);
+
+	setServerDisabled({
+		cwd: paths.outside,
+		disabled: false,
+		registryPath: paths.registryPath,
+		serverName: "profiled",
+		target: "global",
+	});
+
+	updated = readScopedMcpRegistry(paths.registryPath);
+	assert.equal(updated[GLOBAL_SCOPE_KEY]?.mcpServers?.profiled, undefined);
+});
+
 test("--project can locally override a profile-owned server", () => {
 	const paths = fixture();
 	const registry = readScopedMcpRegistry(paths.registryPath);
@@ -273,6 +339,28 @@ test("status reports active profiles and profile server origins", () => {
 	assert.match(
 		status,
 		/profiled: enabled, proxy, prefix: server, scope: profile reusable/,
+	);
+});
+
+test("status reports globally activated profiles", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	registry[PROFILES_KEY] = {
+		common: {
+			mcpServers: { profiled: { command: "profile-command" } },
+		},
+	};
+	(registry[GLOBAL_SCOPE_KEY] as { profiles?: string[] }).profiles = ["common"];
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	const status = formatScopedMcpStatus(paths.outside, {
+		PI_SCOPED_MCP_CONFIG: paths.registryPath,
+	});
+
+	assert.match(status, /Profiles: common/);
+	assert.match(
+		status,
+		/profiled: enabled, proxy, prefix: server, scope: profile common \(global\)/,
 	);
 });
 

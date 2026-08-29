@@ -4,17 +4,19 @@ import type { ScopedPiApi } from "./src/pi-api.ts";
 import { loadScopedMcpConfig } from "./src/registry.ts";
 
 const selection = loadScopedMcpConfig();
+const profiles =
+	selection.profileNames.length > 0
+		? ` with profiles ${selection.profileNames.map((name) => `"${name}"`).join(", ")}`
+		: "";
 
 if (selection.projectName) {
-	const profiles =
-		selection.profileNames.length > 0
-			? ` with profiles ${selection.profileNames.map((name) => `"${name}"`).join(", ")}`
-			: "";
 	console.info(
 		`[scoped-mcp] Loaded global MCPs${profiles} plus project "${selection.projectName}" from ${selection.registryPath}`,
 	);
 } else {
-	console.info(`[scoped-mcp] Loaded global MCPs from ${selection.registryPath}`);
+	console.info(
+		`[scoped-mcp] Loaded global MCPs${profiles} from ${selection.registryPath}`,
+	);
 }
 
 const mcpAdapter = createMcpAdapter({ config: selection.config });

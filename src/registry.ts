@@ -159,9 +159,6 @@ function parseScope(name: string, value: unknown): RegistryScope {
 	if (name === GLOBAL_SCOPE_KEY && path !== undefined) {
 		throw new Error(`[scoped-mcp] "${GLOBAL_SCOPE_KEY}" must not define "path"`);
 	}
-	if (name === GLOBAL_SCOPE_KEY && profiles !== undefined) {
-		throw new Error(`[scoped-mcp] "${GLOBAL_SCOPE_KEY}" must not define "profiles"`);
-	}
 	if (name !== GLOBAL_SCOPE_KEY && typeof path !== "string") {
 		throw new Error(`[scoped-mcp] project "${name}" must define an absolute "path"`);
 	}
@@ -228,11 +225,18 @@ export function parseRegistry(raw: unknown): ScopedMcpRegistry {
 		for (const profileName of scope.profiles ?? []) {
 			if (!profiles[profileName]) {
 				throw new Error(
-					`[scoped-mcp] project "${name}" references unknown profile "${profileName}"`,
+					`[scoped-mcp] scope "${name}" references unknown profile "${profileName}"`,
 				);
 			}
 		}
 		registry[name] = scope;
+	}
+	for (const profileName of registry[GLOBAL_SCOPE_KEY]?.profiles ?? []) {
+		if (containsScopePathPlaceholder(profiles[profileName]?.mcpServers)) {
+			throw new Error(
+				`[scoped-mcp] profile "${profileName}" is activated by "${GLOBAL_SCOPE_KEY}" and must not use ${SCOPE_PATH_PLACEHOLDER}`,
+			);
+		}
 	}
 
 	return registry;
@@ -263,8 +267,17 @@ interface NamedLayer {
 }
 
 interface ActiveLayer extends NamedLayer {
-	kind: "global" | "profile" | "project";
+	kind: "global-profile" | "global" | "project-profile" | "project";
 	source: RegistryProfile;
+}
+
+function containsScopePathPlaceholder(value: unknown): boolean {
+	if (typeof value === "string") return value.includes(SCOPE_PATH_PLACEHOLDER);
+	if (Array.isArray(value)) return value.some(containsScopePathPlaceholder);
+	if (value && typeof value === "object") {
+		return Object.values(value).some(containsScopePathPlaceholder);
+	}
+	return false;
 }
 
 function interpolateScopePath(value: unknown, projectPath: string): unknown {
@@ -306,19 +319,29 @@ function activeLayers(
 	projectName?: string,
 	projectPath?: string,
 ): ActiveLayer[] {
+	const globalScope = registry[GLOBAL_SCOPE_KEY] ?? {};
 	const projectScope = projectName ? registry[projectName] : undefined;
 	const profiles = getRegistryProfiles(registry);
 	return [
+		...(globalScope.profiles ?? []).map((name) => {
+			const source = profiles[name] as RegistryProfile;
+			return {
+				kind: "global-profile" as const,
+				label: `profile ${name} (global)`,
+				scope: source,
+				source,
+			};
+		}),
 		{
 			kind: "global",
 			label: GLOBAL_SCOPE_KEY,
-			scope: registry[GLOBAL_SCOPE_KEY] ?? {},
-			source: registry[GLOBAL_SCOPE_KEY] ?? {},
+			scope: globalScope,
+			source: globalScope,
 		},
 		...(projectScope?.profiles ?? []).map((name) => {
 			const source = profiles[name] as RegistryProfile;
 			return {
-				kind: "profile" as const,
+				kind: "project-profile" as const,
 				label: `profile ${name}`,
 				scope: projectPath ? resolveProfileScopePath(source, projectPath) : source,
 				source,
@@ -425,7 +448,10 @@ export function selectScopedMcpConfig(
 		})
 		.filter(({ projectPath }) => containsPath(projectPath, canonicalCwd))
 		.sort((left, right) => right.projectPath.length - left.projectPath.length)[0];
-	const profileNames = match?.scope.profiles ?? [];
+	const profileNames = [
+		...(registry[GLOBAL_SCOPE_KEY]?.profiles ?? []),
+		...(match?.scope.profiles ?? []),
+	];
 	const merged = mergeLayers(activeLayers(registry, match?.name, match?.projectPath));
 
 	return {
@@ -483,11 +509,6 @@ export function setServerDisabled(options: {
 	const target = options.target ?? "effective";
 	if (target === "global") {
 		targetLayer = layers.find((layer) => layer.kind === "global");
-		if (!targetLayer?.scope.mcpServers?.[options.serverName]) {
-			throw new Error(
-				`[scoped-mcp] Server "${options.serverName}" is not defined in "${GLOBAL_SCOPE_KEY}"`,
-			);
-		}
 	} else if (target === "project") {
 		if (!projectName || !projectScope) {
 			throw new Error(
@@ -515,6 +536,11 @@ export function setServerDisabled(options: {
 	];
 	const currentEntry = targetLayer.source.mcpServers?.[options.serverName];
 	if (!currentEntry && !inherited) {
+		if (target === "global") {
+			throw new Error(
+				`[scoped-mcp] Server "${options.serverName}" is not defined in "${GLOBAL_SCOPE_KEY}" or its profiles`,
+			);
+		}
 		throw new Error(
 			`[scoped-mcp] Server "${options.serverName}" is not defined in project "${projectName}" or its inherited scopes`,
 		);

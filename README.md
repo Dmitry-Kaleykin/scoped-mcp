@@ -24,16 +24,19 @@ Start with [`scoped-mcp.example.json`](./scoped-mcp.example.json):
 ```json
 {
   "$global": {
-    "mcpServers": {
-      "global-server": {
-        "command": "npx",
-        "args": ["-y", "some-mcp-server"],
-        "lifecycle": "lazy",
-        "toolPrefix": "short"
-      }
-    }
+    "profiles": ["common"]
   },
   "$profiles": {
+    "common": {
+      "mcpServers": {
+        "global-server": {
+          "command": "npx",
+          "args": ["-y", "some-mcp-server"],
+          "lifecycle": "lazy",
+          "toolPrefix": "short"
+        }
+      }
+    },
     "phpstorm": {
       "mcpServers": {
         "phpstorm": {
@@ -57,20 +60,22 @@ Start with [`scoped-mcp.example.json`](./scoped-mcp.example.json):
 ```
 
 `$global` is optional and works in every directory. `$profiles` is also optional
-and contains reusable named configurations. Each project can list profiles in
-its `profiles` array. Profiles cannot select paths or extend other profiles.
+and contains reusable named configurations. Both `$global` and projects can
+list profiles in their `profiles` arrays. Profiles cannot select paths or extend
+other profiles.
 
 Each remaining top-level key is a project name. Its `path` must exist. A project
 matches both its root and every directory below it, so starting Pi in a project
 subdirectory still works. Nested project entries are supported; the deepest
 matching path wins.
 
-Configuration precedence is `$global`, then profiles in their listed order,
-then the project. At every layer, a complete same-named server definition
-replaces the inherited definition. This avoids carrying credentials from an
-inherited URL into a more specific URL. The one exception is an entry containing
-only `disabled`, `toolPrefix`, `samplingAutoApprove`, or a combination of them;
-it acts as a safe override for an inherited server. `settings` are
+Configuration precedence is profiles listed by `$global`, `$global` itself,
+profiles listed by the selected project, then the project itself. Profiles are
+applied in their listed order. At every layer, a complete same-named server
+definition replaces the inherited definition. This avoids carrying credentials
+from an inherited URL into a more specific URL. The one exception is an entry
+containing only `disabled`, `toolPrefix`, `samplingAutoApprove`, or a combination
+of them; it acts as a safe override for an inherited server. `settings` are
 shallow-merged in the same order.
 
 Inside a profile's MCP server definition, `${scope.path}` is replaced with the
@@ -78,6 +83,8 @@ canonical path of the project scope that selected the profile. Replacement is
 performed directly on string values, including values nested in `args`, `env`,
 or headers; it does not invoke a shell. The placeholder remains unchanged in
 the registry when using `/scoped-mcp enable` or `/scoped-mcp disable`.
+Profiles activated by `$global` cannot use `${scope.path}`, because they must
+also work when no project scope is active.
 
 For example, a project-aware server can be shared without copying its project
 path into the profile:
@@ -162,8 +169,7 @@ servers, their enabled state, proxy/direct mode, and configuration origin:
 
 With no subcommand, `/scoped-mcp` also shows status.
 
-Enable or disable the layer that currently owns a server. A project definition
-wins, followed by the last active profile that defines it, then `$global`:
+Enable or disable the last layer in precedence order that defines a server:
 
 ```text
 /scoped-mcp disable phpstorm
@@ -176,6 +182,9 @@ Target `$global` explicitly:
 /scoped-mcp disable phpstorm --global
 /scoped-mcp enable phpstorm --global
 ```
+
+When the server is inherited from a profile activated by `$global`, `--global`
+creates a safe override in `$global` without changing the shared profile.
 
 Target the current project explicitly:
 

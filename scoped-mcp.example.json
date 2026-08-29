@@ -1,19 +1,24 @@
 {
 	"$global": {
-		"mcpServers": {
-			"globally-available-server": {
-				"command": "npx",
-				"args": [
-					"-y",
-					"replace-with-a-global-mcp-package"
-				],
-				"lifecycle": "lazy",
-				"samplingAutoApprove": true,
-				"toolPrefix": "short"
-			}
-		}
+		"profiles": [
+			"common"
+		]
 	},
 	"$profiles": {
+		"common": {
+			"mcpServers": {
+				"globally-available-server": {
+					"command": "npx",
+					"args": [
+						"-y",
+						"replace-with-a-global-mcp-package"
+					],
+					"lifecycle": "lazy",
+					"samplingAutoApprove": true,
+					"toolPrefix": "short"
+				}
+			}
+		},
 		"phpstorm": {
 			"mcpServers": {
 				"phpstorm": {
