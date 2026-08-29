@@ -6,6 +6,8 @@ import test from "node:test";
 import { formatScopedMcpStatus } from "../src/commands.ts";
 import {
 	GLOBAL_SCOPE_KEY,
+	getRegistryProfiles,
+	PROFILES_KEY,
 	readScopedMcpRegistry,
 	selectScopedMcpConfig,
 	setServerDisabled,
@@ -71,6 +73,70 @@ test("default toggle updates a global server when the project does not own it", 
 			?.global?.disabled,
 		true,
 	);
+});
+
+test("default toggle updates a profile-owned server", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	registry[PROFILES_KEY] = {
+		reusable: {
+			mcpServers: { profiled: { command: "profile-command" } },
+		},
+	};
+	(registry.project as { profiles?: string[] }).profiles = ["reusable"];
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	const result = setServerDisabled({
+		cwd: paths.project,
+		disabled: true,
+		registryPath: paths.registryPath,
+		serverName: "profiled",
+	});
+
+	assert.equal(result.scopeName, "profile reusable");
+	assert.equal(
+		getRegistryProfiles(readScopedMcpRegistry(paths.registryPath)).reusable
+			?.mcpServers?.profiled?.disabled,
+		true,
+	);
+});
+
+test("--project can locally override a profile-owned server", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	registry[PROFILES_KEY] = {
+		reusable: {
+			mcpServers: { profiled: { command: "profile-command" } },
+		},
+	};
+	(registry.project as { profiles?: string[] }).profiles = ["reusable"];
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	setServerDisabled({
+		cwd: paths.project,
+		disabled: true,
+		registryPath: paths.registryPath,
+		serverName: "profiled",
+		target: "project",
+	});
+
+	let updated = readScopedMcpRegistry(paths.registryPath);
+	assert.deepEqual(updated.project?.mcpServers?.profiled, { disabled: true });
+	assert.equal(
+		getRegistryProfiles(updated).reusable?.mcpServers?.profiled?.disabled,
+		undefined,
+	);
+
+	setServerDisabled({
+		cwd: paths.project,
+		disabled: false,
+		registryPath: paths.registryPath,
+		serverName: "profiled",
+		target: "project",
+	});
+
+	updated = readScopedMcpRegistry(paths.registryPath);
+	assert.equal(updated.project?.mcpServers?.profiled, undefined);
 });
 
 test("--project can disable and re-enable an inherited global server", () => {
@@ -180,6 +246,28 @@ test("status reports registry, scope, origin, state, and direct mode", () => {
 	assert.match(
 		status,
 		/project: enabled, direct: all, prefix: server, scope: project/,
+	);
+});
+
+test("status reports active profiles and profile server origins", () => {
+	const paths = fixture();
+	const registry = readScopedMcpRegistry(paths.registryPath);
+	registry[PROFILES_KEY] = {
+		reusable: {
+			mcpServers: { profiled: { command: "profile-command" } },
+		},
+	};
+	(registry.project as { profiles?: string[] }).profiles = ["reusable"];
+	writeScopedMcpRegistry(paths.registryPath, registry);
+
+	const status = formatScopedMcpStatus(paths.project, {
+		PI_SCOPED_MCP_CONFIG: paths.registryPath,
+	});
+
+	assert.match(status, /Profiles: reusable/);
+	assert.match(
+		status,
+		/profiled: enabled, proxy, prefix: server, scope: profile reusable/,
 	);
 });
 

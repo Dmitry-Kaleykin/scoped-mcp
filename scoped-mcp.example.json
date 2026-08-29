@@ -13,35 +13,37 @@
 			}
 		}
 	},
+	"$profiles": {
+		"phpstorm": {
+			"mcpServers": {
+				"phpstorm": {
+					"command": "/absolute/command/copied/from/phpstorm",
+					"args": [
+						"arguments",
+						"copied",
+						"from",
+						"phpstorm"
+					],
+					"lifecycle": "lazy"
+				}
+			}
+		}
+	},
 	"shop-api": {
 		"path": "/Users/me/Projects/shop-api",
+		"profiles": [
+			"phpstorm"
+		],
 		"mcpServers": {
 			"phpstorm": {
-				"command": "/absolute/command/copied/from/phpstorm",
-				"args": [
-					"arguments",
-					"copied",
-					"from",
-					"phpstorm"
-				],
-				"lifecycle": "lazy",
 				"toolPrefix": "none"
 			}
 		}
 	},
 	"legacy-app": {
 		"path": "/Users/me/Projects/legacy-app",
-		"mcpServers": {
-			"phpstorm": {
-				"command": "/absolute/command/copied/from/phpstorm",
-				"args": [
-					"arguments",
-					"copied",
-					"from",
-					"phpstorm"
-				],
-				"lifecycle": "lazy"
-			}
-		}
+		"profiles": [
+			"phpstorm"
+		]
 	}
 }

@@ -17,12 +17,18 @@ import type {
 } from "pi-mcp-adapter/types";
 
 export const GLOBAL_SCOPE_KEY = "$global";
+export const PROFILES_KEY = "$profiles";
 export const REGISTRY_PATH_ENV = "PI_SCOPED_MCP_CONFIG";
 
-export interface RegistryScope {
-	path?: string;
+export interface RegistryProfile {
 	mcpServers?: Record<string, ServerEntry>;
 	settings?: Omit<McpSettings, "toolPrefix">;
+}
+
+export interface RegistryScope extends RegistryProfile {
+	path?: string;
+	profiles?: string[];
+	[key: string]: unknown;
 }
 
 export type ScopedMcpRegistry = Record<string, RegistryScope>;
@@ -31,7 +37,9 @@ export interface ScopedMcpSelection {
 	config: McpConfig;
 	projectName?: string;
 	projectPath?: string;
+	profileNames: string[];
 	registryPath: string;
+	serverOrigins: Record<string, string>;
 }
 
 export type ScopeTarget = "effective" | "global" | "project";
@@ -95,31 +103,23 @@ function requireObject(value: unknown, label: string): Record<string, unknown> {
 	return value as Record<string, unknown>;
 }
 
-function parseScope(name: string, value: unknown): RegistryScope {
-	const object = requireObject(value, `scope "${name}"`);
-	const path = object.path;
+function parseConfigLayer(
+	object: Record<string, unknown>,
+	label: string,
+): RegistryProfile {
 	const mcpServers = object.mcpServers;
 	const settings = object.settings;
 
-	if (name === GLOBAL_SCOPE_KEY && path !== undefined) {
-		throw new Error(`[scoped-mcp] "${GLOBAL_SCOPE_KEY}" must not define "path"`);
-	}
-	if (name !== GLOBAL_SCOPE_KEY && typeof path !== "string") {
-		throw new Error(`[scoped-mcp] project "${name}" must define an absolute "path"`);
-	}
 	if (mcpServers !== undefined) {
-		const servers = requireObject(mcpServers, `scope "${name}".mcpServers`);
+		const servers = requireObject(mcpServers, `${label}.mcpServers`);
 		for (const [serverName, entry] of Object.entries(servers)) {
-			const server = requireObject(
-				entry,
-				`scope "${name}".mcpServers["${serverName}"]`,
-			);
+			const server = requireObject(entry, `${label}.mcpServers["${serverName}"]`);
 			if (
 				server.toolPrefix !== undefined &&
 				!isToolPrefixMode(server.toolPrefix)
 			) {
 				throw new Error(
-					`[scoped-mcp] scope "${name}".mcpServers["${serverName}"].toolPrefix must be "server", "short", "none", or "mcp"`,
+					`[scoped-mcp] ${label}.mcpServers["${serverName}"].toolPrefix must be "server", "short", "none", or "mcp"`,
 				);
 			}
 			if (
@@ -127,27 +127,78 @@ function parseScope(name: string, value: unknown): RegistryScope {
 				typeof server.samplingAutoApprove !== "boolean"
 			) {
 				throw new Error(
-					`[scoped-mcp] scope "${name}".mcpServers["${serverName}"].samplingAutoApprove must be true or false`,
+					`[scoped-mcp] ${label}.mcpServers["${serverName}"].samplingAutoApprove must be true or false`,
 				);
 			}
 		}
 	}
 	if (settings !== undefined) {
-		const parsedSettings = requireObject(settings, `scope "${name}".settings`);
+		const parsedSettings = requireObject(settings, `${label}.settings`);
 		if ("toolPrefix" in parsedSettings) {
 			throw new Error(
-				`[scoped-mcp] scope "${name}".settings.toolPrefix is not supported; set toolPrefix on each MCP server instead`,
+				`[scoped-mcp] ${label}.settings.toolPrefix is not supported; set toolPrefix on each MCP server instead`,
 			);
 		}
 	}
 
 	return {
-		...(typeof path === "string" ? { path } : {}),
 		...(mcpServers ? { mcpServers: mcpServers as Record<string, ServerEntry> } : {}),
 		...(settings
 			? { settings: settings as Omit<McpSettings, "toolPrefix"> }
 			: {}),
 	};
+}
+
+function parseScope(name: string, value: unknown): RegistryScope {
+	const label = `scope "${name}"`;
+	const object = requireObject(value, label);
+	const path = object.path;
+	const profiles = object.profiles;
+
+	if (name === GLOBAL_SCOPE_KEY && path !== undefined) {
+		throw new Error(`[scoped-mcp] "${GLOBAL_SCOPE_KEY}" must not define "path"`);
+	}
+	if (name === GLOBAL_SCOPE_KEY && profiles !== undefined) {
+		throw new Error(`[scoped-mcp] "${GLOBAL_SCOPE_KEY}" must not define "profiles"`);
+	}
+	if (name !== GLOBAL_SCOPE_KEY && typeof path !== "string") {
+		throw new Error(`[scoped-mcp] project "${name}" must define an absolute "path"`);
+	}
+	if (
+		profiles !== undefined &&
+		(!Array.isArray(profiles) ||
+			profiles.some((profile) => typeof profile !== "string" || profile.length === 0))
+	) {
+		throw new Error(`[scoped-mcp] ${label}.profiles must be an array of profile names`);
+	}
+	if (Array.isArray(profiles) && new Set(profiles).size !== profiles.length) {
+		throw new Error(`[scoped-mcp] ${label}.profiles must not contain duplicates`);
+	}
+
+	return {
+		...parseConfigLayer(object, label),
+		...(typeof path === "string" ? { path } : {}),
+		...(Array.isArray(profiles) ? { profiles: profiles as string[] } : {}),
+	};
+}
+
+function parseProfiles(value: unknown): Record<string, RegistryProfile> {
+	const profiles = requireObject(value, `"${PROFILES_KEY}"`);
+	return Object.fromEntries(
+		Object.entries(profiles).map(([name, profile]) => {
+			if (!name || name.startsWith("$")) {
+				throw new Error(`[scoped-mcp] Invalid profile name: "${name}"`);
+			}
+			const label = `profile "${name}"`;
+			const object = requireObject(profile, label);
+			if (object.path !== undefined || object.profiles !== undefined) {
+				throw new Error(
+					`[scoped-mcp] ${label} must not define "path" or "profiles"`,
+				);
+			}
+			return [name, parseConfigLayer(object, label)];
+		}),
+	);
 }
 
 function isToolPrefixMode(value: unknown): value is ToolPrefix {
@@ -161,9 +212,35 @@ function isToolPrefixMode(value: unknown): value is ToolPrefix {
 
 export function parseRegistry(raw: unknown): ScopedMcpRegistry {
 	const object = requireObject(raw, "registry");
-	return Object.fromEntries(
-		Object.entries(object).map(([name, value]) => [name, parseScope(name, value)]),
-	);
+	const profiles = parseProfiles(object[PROFILES_KEY] ?? {});
+	const registry: ScopedMcpRegistry = {};
+
+	for (const [name, value] of Object.entries(object)) {
+		if (name === PROFILES_KEY) {
+			registry[name] = profiles as unknown as RegistryScope;
+			continue;
+		}
+		if (name.startsWith("$") && name !== GLOBAL_SCOPE_KEY) {
+			throw new Error(`[scoped-mcp] Unknown reserved registry key: "${name}"`);
+		}
+		const scope = parseScope(name, value);
+		for (const profileName of scope.profiles ?? []) {
+			if (!profiles[profileName]) {
+				throw new Error(
+					`[scoped-mcp] project "${name}" references unknown profile "${profileName}"`,
+				);
+			}
+		}
+		registry[name] = scope;
+	}
+
+	return registry;
+}
+
+export function getRegistryProfiles(
+	registry: ScopedMcpRegistry,
+): Record<string, RegistryProfile> {
+	return (registry[PROFILES_KEY] as unknown as Record<string, RegistryProfile>) ?? {};
 }
 
 export function isInheritedServerOverride(entry: ServerEntry): boolean {
@@ -179,28 +256,63 @@ export function isInheritedServerOverride(entry: ServerEntry): boolean {
 	);
 }
 
-function mergeScopes(globalScope: RegistryScope, projectScope?: RegistryScope): McpConfig {
-	const scopedServers = { ...(globalScope.mcpServers ?? {}) };
-	for (const [name, projectEntry] of Object.entries(projectScope?.mcpServers ?? {})) {
-		const globalEntry = scopedServers[name];
-		scopedServers[name] =
-			globalEntry && isInheritedServerOverride(projectEntry)
-				? { ...globalEntry, ...projectEntry }
-				: projectEntry;
+interface NamedLayer {
+	label: string;
+	scope: RegistryProfile;
+}
+
+interface ActiveLayer extends NamedLayer {
+	kind: "global" | "profile" | "project";
+}
+
+function activeLayers(
+	registry: ScopedMcpRegistry,
+	projectName?: string,
+): ActiveLayer[] {
+	const projectScope = projectName ? registry[projectName] : undefined;
+	const profiles = getRegistryProfiles(registry);
+	return [
+		{
+			kind: "global",
+			label: GLOBAL_SCOPE_KEY,
+			scope: registry[GLOBAL_SCOPE_KEY] ?? {},
+		},
+		...(projectScope?.profiles ?? []).map((name) => ({
+			kind: "profile" as const,
+			label: `profile ${name}`,
+			scope: profiles[name] as RegistryProfile,
+		})),
+		...(projectScope
+			? [{ kind: "project" as const, label: projectName as string, scope: projectScope }]
+			: []),
+	];
+}
+
+function mergeLayers(layers: NamedLayer[]): {
+	config: McpConfig;
+	serverOrigins: Record<string, string>;
+} {
+	const mcpServers: Record<string, ServerEntry> = {};
+	const serverOrigins: Record<string, string> = {};
+	let settings: Omit<McpSettings, "toolPrefix"> | undefined;
+
+	for (const layer of layers) {
+		for (const [name, entry] of Object.entries(layer.scope.mcpServers ?? {})) {
+			const inherited = mcpServers[name];
+			if (inherited && isInheritedServerOverride(entry)) {
+				mcpServers[name] = { ...inherited, ...entry };
+				serverOrigins[name] = `${layer.label} override`;
+			} else {
+				mcpServers[name] = entry;
+				serverOrigins[name] = layer.label;
+			}
+		}
+		if (layer.scope.settings) {
+			settings = { ...(settings ?? {}), ...layer.scope.settings };
+		}
 	}
 
-	const mergedSettings =
-		globalScope.settings || projectScope?.settings
-			? {
-					...(globalScope.settings ?? {}),
-					...(projectScope?.settings ?? {}),
-				}
-			: undefined;
-
-	return {
-		mcpServers: scopedServers,
-		settings: mergedSettings,
-	};
+	return { config: { mcpServers, settings }, serverOrigins };
 }
 
 export function readScopedMcpRegistry(registryPath: string): ScopedMcpRegistry {
@@ -251,10 +363,9 @@ export function selectScopedMcpConfig(
 	registryPath = "<memory>",
 ): ScopedMcpSelection {
 	const canonicalCwd = canonicalExistingPath(cwd, "working directory");
-	const globalScope = registry[GLOBAL_SCOPE_KEY] ?? {};
 
 	const match = Object.entries(registry)
-		.filter(([name]) => name !== GLOBAL_SCOPE_KEY)
+		.filter(([name]) => name !== GLOBAL_SCOPE_KEY && name !== PROFILES_KEY)
 		.map(([name, scope]) => {
 			const projectPath = canonicalExistingPath(
 				scope.path as string,
@@ -265,13 +376,17 @@ export function selectScopedMcpConfig(
 		})
 		.filter(({ projectPath }) => containsPath(projectPath, canonicalCwd))
 		.sort((left, right) => right.projectPath.length - left.projectPath.length)[0];
+	const profileNames = match?.scope.profiles ?? [];
+	const merged = mergeLayers(activeLayers(registry, match?.name));
 
 	return {
-		config: mergeScopes(globalScope, match?.scope),
+		config: merged.config,
 		...(match
 			? { projectName: match.name, projectPath: match.projectPath }
 			: {}),
+		profileNames,
 		registryPath,
+		serverOrigins: merged.serverOrigins,
 	};
 }
 
@@ -279,6 +394,24 @@ function deleteDisabled(entry: ServerEntry): ServerEntry {
 	const next = { ...entry };
 	delete next.disabled;
 	return next;
+}
+
+function toggledEntry(
+	entry: ServerEntry | undefined,
+	inherited: ServerEntry | undefined,
+	disabled: boolean,
+): ServerEntry | undefined {
+	if (entry && !isInheritedServerOverride(entry)) {
+		return disabled ? { ...entry, disabled: true } : deleteDisabled(entry);
+	}
+
+	const next = { ...(entry ?? {}) };
+	if ((inherited?.disabled === true) === disabled) {
+		delete next.disabled;
+	} else {
+		next.disabled = disabled;
+	}
+	return Object.keys(next).length > 0 ? next : undefined;
 }
 
 export function setServerDisabled(options: {
@@ -294,74 +427,54 @@ export function setServerDisabled(options: {
 		options.cwd,
 		options.registryPath,
 	);
-	const globalScope = registry[GLOBAL_SCOPE_KEY] ?? { mcpServers: {} };
 	const projectName = selection.projectName;
 	const projectScope = projectName ? registry[projectName] : undefined;
-	const globalEntry = globalScope.mcpServers?.[options.serverName];
-	const projectEntry = projectScope?.mcpServers?.[options.serverName];
-
-	let scopeName: string;
+	const layers = activeLayers(registry, projectName);
+	let targetLayer: ActiveLayer | undefined;
 	const target = options.target ?? "effective";
 	if (target === "global") {
-		scopeName = GLOBAL_SCOPE_KEY;
+		targetLayer = layers.find((layer) => layer.kind === "global");
+		if (!targetLayer?.scope.mcpServers?.[options.serverName]) {
+			throw new Error(
+				`[scoped-mcp] Server "${options.serverName}" is not defined in "${GLOBAL_SCOPE_KEY}"`,
+			);
+		}
 	} else if (target === "project") {
 		if (!projectName || !projectScope) {
 			throw new Error(
 				`[scoped-mcp] No project scope matches ${canonicalExistingPath(options.cwd, "working directory")}`,
 			);
 		}
-		scopeName = projectName;
+		targetLayer = layers.find((layer) => layer.kind === "project");
 	} else {
-		scopeName = projectEntry ? (projectName as string) : GLOBAL_SCOPE_KEY;
-	}
-
-	if (scopeName === GLOBAL_SCOPE_KEY) {
-		if (!globalEntry) {
+		targetLayer = [...layers]
+			.reverse()
+			.find((layer) => layer.scope.mcpServers?.[options.serverName]);
+		if (!targetLayer) {
 			throw new Error(
-				`[scoped-mcp] Server "${options.serverName}" is not defined in "${GLOBAL_SCOPE_KEY}"`,
+				`[scoped-mcp] Server "${options.serverName}" is not defined in the active scope`,
 			);
 		}
-		globalScope.mcpServers ??= {};
-		const nextEntry = options.disabled
-			? { ...globalEntry, disabled: true }
-			: deleteDisabled(globalEntry);
-		const changed = JSON.stringify(nextEntry) !== JSON.stringify(globalEntry);
-		globalScope.mcpServers[options.serverName] = nextEntry;
-		registry[GLOBAL_SCOPE_KEY] = globalScope;
-		if (changed) writeScopedMcpRegistry(options.registryPath, registry);
-		return {
-			changed,
-			disabled: options.disabled,
-			scopeName,
-			serverName: options.serverName,
-			registryPath: options.registryPath,
-		};
+	}
+	if (!targetLayer) {
+		throw new Error("[scoped-mcp] Could not resolve the target configuration layer");
 	}
 
-	const targetScope = registry[scopeName] as RegistryScope;
-	targetScope.mcpServers ??= {};
-	if (!projectEntry && !globalEntry) {
+	const targetIndex = layers.indexOf(targetLayer);
+	const inherited = mergeLayers(layers.slice(0, targetIndex)).config.mcpServers[
+		options.serverName
+	];
+	const currentEntry = targetLayer.scope.mcpServers?.[options.serverName];
+	if (!currentEntry && !inherited) {
 		throw new Error(
-			`[scoped-mcp] Server "${options.serverName}" is not defined in project "${scopeName}" or "${GLOBAL_SCOPE_KEY}"`,
+			`[scoped-mcp] Server "${options.serverName}" is not defined in project "${projectName}" or its inherited scopes`,
 		);
 	}
 
-	let nextEntry: ServerEntry | undefined;
-	if (projectEntry && !isInheritedServerOverride(projectEntry)) {
-		nextEntry = options.disabled
-			? { ...projectEntry, disabled: true }
-			: deleteDisabled(projectEntry);
-	} else if (options.disabled) {
-		nextEntry = { ...(projectEntry ?? {}), disabled: true };
-	} else if (globalEntry?.disabled === true) {
-		nextEntry = { ...(projectEntry ?? {}), disabled: false };
-	} else if (projectEntry) {
-		const enabledOverride = deleteDisabled(projectEntry);
-		nextEntry =
-			Object.keys(enabledOverride).length > 0 ? enabledOverride : undefined;
-	}
-
-	const changed = JSON.stringify(nextEntry) !== JSON.stringify(projectEntry);
+	const nextEntry = toggledEntry(currentEntry, inherited, options.disabled);
+	const changed = JSON.stringify(nextEntry) !== JSON.stringify(currentEntry);
+	const targetScope = targetLayer.scope;
+	targetScope.mcpServers ??= {};
 	if (nextEntry) {
 		targetScope.mcpServers[options.serverName] = nextEntry;
 	} else {
@@ -372,7 +485,7 @@ export function setServerDisabled(options: {
 	return {
 		changed,
 		disabled: options.disabled,
-		scopeName,
+		scopeName: targetLayer.label,
 		serverName: options.serverName,
 		registryPath: options.registryPath,
 	};

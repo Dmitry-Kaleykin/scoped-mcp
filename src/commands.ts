@@ -4,10 +4,7 @@ import type { ScopedCommandContext, ScopedPiApi } from "./pi-api.ts";
 import {
 	ensureScopedMcpRegistry,
 	getRegistryPath,
-	GLOBAL_SCOPE_KEY,
-	isInheritedServerOverride,
 	loadScopedMcpConfig,
-	readScopedMcpRegistry,
 	setServerDisabled,
 	type ScopeTarget,
 } from "./registry.ts";
@@ -36,28 +33,11 @@ function toolPrefixLabel(entry: ServerEntry): ToolPrefix {
 	return entry.toolPrefix ?? "server";
 }
 
-function serverOrigin(
-	projectName: string | undefined,
-	globalEntry: ServerEntry | undefined,
-	projectEntry: ServerEntry | undefined,
-): string {
-	if (!projectEntry) return GLOBAL_SCOPE_KEY;
-	if (globalEntry && isInheritedServerOverride(projectEntry)) {
-		return `${projectName} override`;
-	}
-	return projectName ?? GLOBAL_SCOPE_KEY;
-}
-
 export function formatScopedMcpStatus(
 	cwd: string,
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
 	const selection = loadScopedMcpConfig({ cwd, env });
-	const registry = readScopedMcpRegistry(selection.registryPath);
-	const globalServers = registry[GLOBAL_SCOPE_KEY]?.mcpServers ?? {};
-	const projectServers = selection.projectName
-		? registry[selection.projectName]?.mcpServers ?? {}
-		: {};
 	const serverNames = Object.keys(selection.config.mcpServers).sort((left, right) =>
 		left.localeCompare(right),
 	);
@@ -67,6 +47,7 @@ export function formatScopedMcpStatus(
 		selection.projectName
 			? `Scope: ${selection.projectName} (${selection.projectPath})`
 			: "Scope: global only",
+		`Profiles: ${selection.profileNames.length > 0 ? selection.profileNames.join(", ") : "(none)"}`,
 		`Servers: ${serverNames.length}`,
 	];
 
@@ -76,11 +57,7 @@ export function formatScopedMcpStatus(
 		for (const name of serverNames) {
 			const effective = selection.config.mcpServers[name] as ServerEntry;
 			const enabled = effective.disabled === true ? "disabled" : "enabled";
-			const origin = serverOrigin(
-				selection.projectName,
-				globalServers[name],
-				projectServers[name],
-			);
+			const origin = selection.serverOrigins[name];
 			lines.push(
 				`  ${name}: ${enabled}, ${directToolsLabel(effective)}, prefix: ${toolPrefixLabel(effective)}, scope: ${origin}`,
 			);

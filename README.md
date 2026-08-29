@@ -33,13 +33,22 @@ Start with [`scoped-mcp.example.json`](./scoped-mcp.example.json):
       }
     }
   },
+  "$profiles": {
+    "phpstorm": {
+      "mcpServers": {
+        "phpstorm": {
+          "command": "/command/copied/from/phpstorm",
+          "args": ["arguments", "copied", "from", "phpstorm"],
+          "lifecycle": "lazy"
+        }
+      }
+    }
+  },
   "my-php-project": {
     "path": "/Users/me/Projects/my-php-project",
+    "profiles": ["phpstorm"],
     "mcpServers": {
       "phpstorm": {
-        "command": "/command/copied/from/phpstorm",
-        "args": ["arguments", "copied", "from", "phpstorm"],
-        "lifecycle": "lazy",
         "toolPrefix": "none"
       }
     }
@@ -47,26 +56,30 @@ Start with [`scoped-mcp.example.json`](./scoped-mcp.example.json):
 }
 ```
 
-`$global` is optional and works in every directory. Each other top-level key is
-a project name. Its `path` must exist. A project matches both its root and every
-directory below it, so starting Pi in a project subdirectory still works.
-Nested project entries are supported; the deepest matching path wins.
+`$global` is optional and works in every directory. `$profiles` is also optional
+and contains reusable named configurations. Each project can list profiles in
+its `profiles` array. Profiles cannot select paths or extend other profiles.
 
-Project MCP servers are merged over the global set. When both scopes define the
-same server name, the complete project definition replaces the global one. This
-avoids carrying credentials from a global URL into a project-specific URL.
-The one exception is a project entry containing only `disabled`, `toolPrefix`,
-`samplingAutoApprove`, or a combination of them; it acts as a safe override for
-an inherited global server.
-`settings` are shallow-merged, with project values taking precedence.
+Each remaining top-level key is a project name. Its `path` must exist. A project
+matches both its root and every directory below it, so starting Pi in a project
+subdirectory still works. Nested project entries are supported; the deepest
+matching path wins.
+
+Configuration precedence is `$global`, then profiles in their listed order,
+then the project. At every layer, a complete same-named server definition
+replaces the inherited definition. This avoids carrying credentials from an
+inherited URL into a more specific URL. The one exception is an entry containing
+only `disabled`, `toolPrefix`, `samplingAutoApprove`, or a combination of them;
+it acts as a safe override for an inherited server. `settings` are
+shallow-merged in the same order.
 
 Tool prefixes use upstream's native per-server `toolPrefix` setting. The
 supported values are `"server"` (the default), `"short"`, `"none"`, and `"mcp"`.
 Root-level `settings.toolPrefix` is intentionally rejected by this wrapper;
-move it onto each server that needs non-default behavior. A project
-can override an inherited global server's prefix without copying its connection
-details. A complete project server definition replaces the prefix together with
-the rest of the definition.
+move it onto each server that needs non-default behavior. A profile or project
+can override an inherited server's prefix without copying its connection
+details. A complete server definition replaces the prefix together with the
+rest of the definition.
 
 Sampling approval can be trusted per MCP server with
 `"samplingAutoApprove": true`. This suppresses both sampling confirmation
@@ -86,9 +99,10 @@ Adapter 2.27 also registers the `mcpScript` tool by default. To retain the
 older tool surface, set `"scriptMode": false` under a scope's `settings` (usually
 `$global`).
 
-Paste the server object supplied by PhpStorm under the project's `mcpServers`.
-Current PhpStorm versions provide this through **Settings → Tools → MCP Server →
-Manual Client Configuration**.
+Paste the server object supplied by PhpStorm under a reusable profile's
+`mcpServers`, or directly under a project when it is project-specific. Current
+PhpStorm versions provide this through **Settings → Tools → MCP Server → Manual
+Client Configuration**.
 
 Because the adapter receives a programmatic configuration snapshot, its normal
 file discovery and `imports` are intentionally not used. `/mcp setup`,
@@ -111,8 +125,8 @@ as `/mcp tools`, `/mcp prompts`, `/mcp reconnect`, `/mcp logout`, and
 
 ## Commands
 
-Show the selected registry, active project scope, effective servers, their
-enabled state, proxy/direct mode, and configuration origin:
+Show the selected registry, active project scope and profiles, effective
+servers, their enabled state, proxy/direct mode, and configuration origin:
 
 ```text
 /scoped-mcp status
@@ -120,8 +134,8 @@ enabled state, proxy/direct mode, and configuration origin:
 
 With no subcommand, `/scoped-mcp` also shows status.
 
-Enable or disable the scope that currently owns a server. A project definition
-wins; otherwise the command updates `$global`:
+Enable or disable the layer that currently owns a server. A project definition
+wins, followed by the last active profile that defines it, then `$global`:
 
 ```text
 /scoped-mcp disable phpstorm
@@ -142,10 +156,9 @@ Target the current project explicitly:
 /scoped-mcp enable phpstorm --project
 ```
 
-`--project` can disable a server inherited from `$global` only for the current
-project. It can also enable a globally disabled server only for the current
-project. Changes are saved atomically with owner-only file permissions, and Pi
-reloads automatically when a value changes.
+`--project` can disable or enable a server inherited from `$global` or a profile
+only for the current project. Changes are saved atomically with owner-only file
+permissions, and Pi reloads automatically when a value changes.
 
 Open the registry in a new macOS Terminal window:
 
