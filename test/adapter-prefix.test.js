@@ -94,10 +94,11 @@ test("patched adapter forwards MCP progress to Pi tool updates", () => {
 
 	assert.match(proxyModes, /onUpdate\?: AgentToolUpdateCallback/);
 	assert.match(proxyModes, /onprogress: \(progress:/);
-	assert.match(proxyModes, /}, progressOptions\), ownedSignal\)/);
+	assert.match(proxyModes, /if \(onUpdate\) \{/);
+	assert.match(proxyModes, /toolMeta\.originalName,\s*onUpdate,/);
 	assert.match(
 		index,
-		/executeCall\(state, dispatchParams\.tool, parsedArgs, dispatchParams\.server, getPiTools, signal, "proxy", onUpdate\)/,
+		/executeCall\(state, params\.tool, parsedArgs, params\.server, getPiTools, signal, "proxy", onUpdate\)/,
 	);
 
 	assert.match(

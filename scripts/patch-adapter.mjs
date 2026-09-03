@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const supportedVersion = "2.27.0";
+const supportedVersion = "2.32.1";
 const packagePath = fileURLToPath(
 	new URL("../node_modules/pi-mcp-adapter/package.json", import.meta.url),
 );
@@ -197,8 +197,8 @@ patchFile(directToolsPath, [
 		label: "direct-tool MCP progress forwarding",
 	},
 	{
-		original: "        }, requestOptions), ownedSignal),",
-		replacement: "        }, progressOptions), ownedSignal),",
+		original: "          }, requestOptions), ownedSignal);",
+		replacement: "          }, progressOptions), ownedSignal);",
 		label: "direct-tool progress request options",
 	},
 ]);
@@ -226,30 +226,54 @@ patchFile(proxyModesPath, [
 		label: "proxy progress callback parameter",
 	},
 	{
-		original:
-			"  const requestOptions = state.manager.getRequestOptions?.(serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);",
+		original: [
+			"  toolName: string,",
+			"): RequestOptions | undefined {",
+			"  if (!ui) return options;",
+		].join("\n"),
 		replacement: [
-			"  const requestOptions = state.manager.getRequestOptions?.(serverName, ownedSignal) ?? (ownedSignal ? { signal: ownedSignal } : undefined);",
-			"  const progressOptions = {",
-			"    ...(requestOptions ?? {}),",
-			"    onprogress: (progress: { progress: number; total?: number; message?: string }) => {",
+			"  toolName: string,",
+			"  onUpdate?: AgentToolUpdateCallback<Record<string, unknown>>,",
+			"): RequestOptions | undefined {",
+			"  if (!ui && !onUpdate) return options;",
+		].join("\n"),
+		label: "proxy progress callback bridge",
+	},
+	{
+		original: [
+			"      const ratio = `${progress.progress}${progress.total === undefined ? \"\" : `/${progress.total}`}`;",
+			"      ui.notify(progress.message ? `${label}: ${progress.message} (${ratio})` : `${label}: ${ratio}`, \"info\");",
+		].join("\n"),
+		replacement: [
 			"      const percent = typeof progress.total === \"number\" && progress.total > 0",
 			"        ? Math.max(0, Math.min(100, Math.round((progress.progress / progress.total) * 100)))",
 			"        : null;",
 			"      const message = progress.message?.trim() || \"MCP tool is working\";",
-			"      onUpdate?.({",
-			"        content: [{ type: \"text\" as const, text: percent === null ? message : `${message} · ${percent}%` }],",
-			"        details: { mode: \"call\", ...callIdentity, progress: progress.progress, total: progress.total },",
-			"      });",
-			"    },",
-			"  };",
+			"      if (onUpdate) {",
+			"        onUpdate({",
+			"          content: [{ type: \"text\" as const, text: percent === null ? message : `${message} · ${percent}%` }],",
+			"          details: { server: serverName, tool: toolName, progress: progress.progress, total: progress.total },",
+			"        });",
+			"      } else {",
+			"        const ratio = `${progress.progress}${progress.total === undefined ? \"\" : `/${progress.total}`}`;",
+			"        ui?.notify(progress.message ? `${label}: ${progress.message} (${ratio})` : `${label}: ${ratio}`, \"info\");",
+			"      }",
 		].join("\n"),
 		label: "proxy MCP progress forwarding",
 	},
 	{
-		original: "      }, requestOptions), ownedSignal),",
-		replacement: "      }, progressOptions), ownedSignal),",
-		label: "proxy progress request options",
+		original: [
+			"    serverName,",
+			"    toolMeta.originalName,",
+			"  );",
+		].join("\n"),
+		replacement: [
+			"    serverName,",
+			"    toolMeta.originalName,",
+			"    onUpdate,",
+			"  );",
+		].join("\n"),
+		label: "proxy MCP progress callback routing",
 	},
 ]);
 
@@ -263,9 +287,9 @@ patchFile(indexPath, [
 	},
 	{
 		original:
-			"          return executeCall(state, dispatchParams.tool, parsedArgs, dispatchParams.server, getPiTools, signal);",
+			"          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools, signal);",
 		replacement:
-			'          return executeCall(state, dispatchParams.tool, parsedArgs, dispatchParams.server, getPiTools, signal, "proxy", onUpdate);',
+			'          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools, signal, "proxy", onUpdate);',
 		label: "proxy Pi progress routing",
 	},
 ]);

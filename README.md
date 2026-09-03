@@ -130,7 +130,7 @@ gateway. This feedback is independent of a server's `debug` setting: `debug`
 still controls raw child-process stderr, while progress remains visible during
 normal operation.
 
-Adapter 2.27 also registers the `mcpScript` tool by default. To retain the
+Adapter 2.32 also registers the `mcpScript` tool by default. To retain the
 older tool surface, set `"scriptMode": false` under a scope's `settings` (usually
 `$global`).
 
@@ -233,10 +233,11 @@ Restart Pi after installation or configuration changes.
 
 ## Update pi-mcp-adapter
 
-This project imports the supported `createMcpAdapter()` factory. Upstream 2.27.0
-natively accepts per-server tool prefixes. It still has only a global sampling
-trust setting and does not forward MCP progress notifications to Pi tool
-updates. [`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs) applies a
+This project imports the supported `createMcpAdapter()` factory. Upstream 2.32.1
+natively accepts per-server tool prefixes and reports proxy progress through UI
+notifications. It still has only a global sampling trust setting and does not
+forward MCP progress notifications to Pi's live tool-result area.
+[`scripts/patch-adapter.mjs`](./scripts/patch-adapter.mjs) applies a
 version-pinned compatibility patch for those two remaining wrapper features
 during `npm install`. The patch also forwards each MCP sampling request's
 cancellation signal and fails loudly against an unreviewed adapter version.
