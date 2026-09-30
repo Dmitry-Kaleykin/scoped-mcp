@@ -143,6 +143,20 @@ pi remove npm:pi-mcp-adapter
 pi install /Users/donais/Documents/Projects/scoped-mcp
 ```
 
+Then run `pi config` and disable **mcp** under **Built-in extensions**. This
+package creates Pi's native MCP extension itself with the scoped registry as its
+configuration source, so loading `builtin:mcp` as well would register `/mcp`
+twice and produce a replacement warning. The native `/mcp` command remains
+available through `scoped-mcp`.
+
+The equivalent user setting is:
+
+```json
+{
+  "extensions": ["-builtin:mcp"]
+}
+```
+
 The package requires Pi 0.99.1 and Node.js 22.19 or newer. Restart or reload Pi
 after installation.
 
