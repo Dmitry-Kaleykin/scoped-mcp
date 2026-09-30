@@ -1,27 +1,84 @@
-import { createMcpAdapter } from "pi-mcp-adapter";
+import {
+	createMcpExtension,
+	type ExtensionAPI,
+	type McpExtensionOptions,
+} from "@earendil-works/pi-coding-agent";
 import { registerScopedMcpCommand } from "./src/commands.ts";
-import type { ScopedPiApi } from "./src/pi-api.ts";
-import { loadScopedMcpConfig } from "./src/registry.ts";
+import { droppedAdapterKeys, translateSelection } from "./src/native-mcp.ts";
+import {
+	getRegistryPath,
+	loadScopedMcpConfig,
+	setServerDisabled,
+	setServerExposure,
+} from "./src/registry.ts";
 
-const selection = loadScopedMcpConfig();
-const profiles =
-	selection.profileNames.length > 0
-		? ` with profiles ${selection.profileNames.map((name) => `"${name}"`).join(", ")}`
-		: "";
+type NativeConfigPatch = Parameters<
+	NonNullable<McpExtensionOptions["updateConfig"]>
+>[1];
 
-if (selection.projectName) {
+const warnedDroppedKeys = new Set<string>();
+
+function reportSelection(cwd: string): ReturnType<typeof loadScopedMcpConfig> {
+	const selection = loadScopedMcpConfig({ cwd });
+	const profiles =
+		selection.profileNames.length > 0
+			? ` with profiles ${selection.profileNames.map((name) => `"${name}"`).join(", ")}`
+			: "";
 	console.info(
-		`[scoped-mcp] Loaded global MCPs${profiles} plus project "${selection.projectName}" from ${selection.registryPath}`,
+		selection.projectName
+			? `[scoped-mcp] Loaded global MCPs${profiles} plus project "${selection.projectName}" from ${selection.registryPath}`
+			: `[scoped-mcp] Loaded global MCPs${profiles} from ${selection.registryPath}`,
 	);
-} else {
-	console.info(
-		`[scoped-mcp] Loaded global MCPs${profiles} from ${selection.registryPath}`,
-	);
+
+	const dropped = new Set<string>();
+	for (const entry of Object.values(selection.config.mcpServers)) {
+		for (const key of droppedAdapterKeys(entry)) dropped.add(key);
+	}
+	for (const key of Object.keys(selection.config.settings ?? {})) {
+		if (key !== "autoEnableCodemode") dropped.add(`settings.${key}`);
+	}
+	const newDropped = [...dropped].filter((key) => !warnedDroppedKeys.has(key));
+	if (newDropped.length > 0) {
+		for (const key of newDropped) warnedDroppedKeys.add(key);
+		console.warn(
+			`[scoped-mcp] Ignoring options that are not supported by Pi's built-in MCP: ${newDropped.join(", ")}`,
+		);
+	}
+
+	return selection;
 }
 
-const mcpAdapter = createMcpAdapter({ config: selection.config });
+export default function scopedMcp(pi: ExtensionAPI): void | Promise<void> {
+	let activeCwd = process.cwd();
+	let activeRegistryPath = getRegistryPath();
 
-export default function scopedMcp(pi: ScopedPiApi): void {
+	const nativeMcp = createMcpExtension({
+		loadConfig(ctx) {
+			activeCwd = ctx.cwd;
+			const selection = reportSelection(ctx.cwd);
+			activeRegistryPath = selection.registryPath;
+			return translateSelection(selection);
+		},
+		updateConfig(entry, patch: NativeConfigPatch) {
+			if (patch.enabled !== undefined) {
+				setServerDisabled({
+					cwd: activeCwd,
+					disabled: !patch.enabled,
+					registryPath: activeRegistryPath,
+					serverName: entry.name,
+				});
+			}
+			if (patch.exposure !== undefined) {
+				setServerExposure({
+					cwd: activeCwd,
+					exposure: patch.exposure,
+					registryPath: activeRegistryPath,
+					serverName: entry.name,
+				});
+			}
+		},
+	});
+
 	registerScopedMcpCommand(pi);
-	mcpAdapter(pi);
+	return nativeMcp(pi);
 }

@@ -13,9 +13,7 @@
 						"-y",
 						"replace-with-a-global-mcp-package"
 					],
-					"lifecycle": "lazy",
-					"samplingAutoApprove": true,
-					"toolPrefix": "short"
+					"exposure": "codemode"
 				}
 			}
 		},
@@ -29,7 +27,7 @@
 						"from",
 						"phpstorm"
 					],
-					"lifecycle": "lazy"
+					"exposure": "direct"
 				}
 			}
 		}
@@ -38,12 +36,7 @@
 		"path": "/Users/me/Projects/shop-api",
 		"profiles": [
 			"phpstorm"
-		],
-		"mcpServers": {
-			"phpstorm": {
-				"toolPrefix": "none"
-			}
-		}
+		]
 	},
 	"legacy-app": {
 		"path": "/Users/me/Projects/legacy-app",

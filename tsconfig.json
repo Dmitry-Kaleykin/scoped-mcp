@@ -7,14 +7,6 @@
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
 		"skipLibCheck": true,
-		"paths": {
-			"pi-mcp-adapter": [
-				"./types/pi-mcp-adapter.d.ts"
-			],
-			"pi-mcp-adapter/types": [
-				"./types/pi-mcp-adapter-types.d.ts"
-			]
-		},
 		"types": [
 			"node"
 		]
@@ -22,7 +14,6 @@
 	"include": [
 		"index.ts",
 		"src/**/*.ts",
-		"test/**/*.ts",
-		"types/**/*.d.ts"
+		"test/**/*.ts"
 	]
 }

@@ -9,21 +9,47 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import type {
-	McpConfig,
-	McpSettings,
-	ServerEntry,
-	ToolPrefix,
-} from "pi-mcp-adapter/types";
+import type { McpExposure } from "@earendil-works/pi-coding-agent";
 
 export const GLOBAL_SCOPE_KEY = "$global";
 export const PROFILES_KEY = "$profiles";
 export const SCOPE_PATH_PLACEHOLDER = "${scope.path}";
 export const REGISTRY_PATH_ENV = "PI_SCOPED_MCP_CONFIG";
 
+export interface RegistryServerEntry {
+	command?: string;
+	args?: string[];
+	env?: Record<string, string>;
+	cwd?: string;
+	url?: string;
+	headers?: Record<string, string>;
+	oauth?: Record<string, unknown>;
+	type?: "stdio" | "http";
+	exposure?: McpExposure;
+	toolExposure?: Record<string, McpExposure>;
+	enabled?: boolean;
+	disabled?: boolean;
+	timeout?: number;
+	requestTimeoutMs?: number;
+	directTools?: boolean | string[];
+	includeTools?: string[];
+	excludeTools?: string[];
+	[key: string]: unknown;
+}
+
+export interface RegistrySettings {
+	autoEnableCodemode?: boolean;
+	[key: string]: unknown;
+}
+
+export interface ScopedMcpConfig {
+	mcpServers: Record<string, RegistryServerEntry>;
+	settings?: RegistrySettings;
+}
+
 export interface RegistryProfile {
-	mcpServers?: Record<string, ServerEntry>;
-	settings?: Omit<McpSettings, "toolPrefix">;
+	mcpServers?: Record<string, RegistryServerEntry>;
+	settings?: RegistrySettings;
 }
 
 export interface RegistryScope extends RegistryProfile {
@@ -35,12 +61,13 @@ export interface RegistryScope extends RegistryProfile {
 export type ScopedMcpRegistry = Record<string, RegistryScope>;
 
 export interface ScopedMcpSelection {
-	config: McpConfig;
+	config: ScopedMcpConfig;
 	projectName?: string;
 	projectPath?: string;
 	profileNames: string[];
 	registryPath: string;
 	serverOrigins: Record<string, string>;
+	serverScopes: Record<string, "global" | "project">;
 }
 
 export type ScopeTarget = "effective" | "global" | "project";
@@ -48,6 +75,14 @@ export type ScopeTarget = "effective" | "global" | "project";
 export interface ServerToggleResult {
 	changed: boolean;
 	disabled: boolean;
+	scopeName: string;
+	serverName: string;
+	registryPath: string;
+}
+
+export interface ServerExposureResult {
+	changed: boolean;
+	exposure: McpExposure;
 	scopeName: string;
 	serverName: string;
 	registryPath: string;
@@ -114,39 +149,18 @@ function parseConfigLayer(
 	if (mcpServers !== undefined) {
 		const servers = requireObject(mcpServers, `${label}.mcpServers`);
 		for (const [serverName, entry] of Object.entries(servers)) {
-			const server = requireObject(entry, `${label}.mcpServers["${serverName}"]`);
-			if (
-				server.toolPrefix !== undefined &&
-				!isToolPrefixMode(server.toolPrefix)
-			) {
-				throw new Error(
-					`[scoped-mcp] ${label}.mcpServers["${serverName}"].toolPrefix must be "server", "short", "none", or "mcp"`,
-				);
-			}
-			if (
-				server.samplingAutoApprove !== undefined &&
-				typeof server.samplingAutoApprove !== "boolean"
-			) {
-				throw new Error(
-					`[scoped-mcp] ${label}.mcpServers["${serverName}"].samplingAutoApprove must be true or false`,
-				);
-			}
+			requireObject(entry, `${label}.mcpServers["${serverName}"]`);
 		}
 	}
 	if (settings !== undefined) {
-		const parsedSettings = requireObject(settings, `${label}.settings`);
-		if ("toolPrefix" in parsedSettings) {
-			throw new Error(
-				`[scoped-mcp] ${label}.settings.toolPrefix is not supported; set toolPrefix on each MCP server instead`,
-			);
-		}
+		requireObject(settings, `${label}.settings`);
 	}
 
 	return {
-		...(mcpServers ? { mcpServers: mcpServers as Record<string, ServerEntry> } : {}),
-		...(settings
-			? { settings: settings as Omit<McpSettings, "toolPrefix"> }
+		...(mcpServers
+			? { mcpServers: mcpServers as Record<string, RegistryServerEntry> }
 			: {}),
+		...(settings ? { settings: settings as RegistrySettings } : {}),
 	};
 }
 
@@ -199,15 +213,6 @@ function parseProfiles(value: unknown): Record<string, RegistryProfile> {
 	);
 }
 
-function isToolPrefixMode(value: unknown): value is ToolPrefix {
-	return (
-		value === "server" ||
-		value === "short" ||
-		value === "none" ||
-		value === "mcp"
-	);
-}
-
 export function parseRegistry(raw: unknown): ScopedMcpRegistry {
 	const object = requireObject(raw, "registry");
 	const profiles = parseProfiles(object[PROFILES_KEY] ?? {});
@@ -248,13 +253,16 @@ export function getRegistryProfiles(
 	return (registry[PROFILES_KEY] as unknown as Record<string, RegistryProfile>) ?? {};
 }
 
-export function isInheritedServerOverride(entry: ServerEntry): boolean {
+export function isInheritedServerOverride(entry: RegistryServerEntry): boolean {
 	const keys = Object.keys(entry);
 	return (
 		keys.length > 0 &&
 		keys.every(
 			(key) =>
 				key === "disabled" ||
+				key === "enabled" ||
+				key === "exposure" ||
+				key === "toolExposure" ||
 				key === "toolPrefix" ||
 				key === "samplingAutoApprove",
 		)
@@ -308,7 +316,7 @@ function resolveProfileScopePath(
 		mcpServers: Object.fromEntries(
 			Object.entries(profile.mcpServers).map(([name, entry]) => [
 				name,
-				interpolateScopePath(entry, projectPath) as ServerEntry,
+				interpolateScopePath(entry, projectPath) as RegistryServerEntry,
 			]),
 		),
 	};
@@ -361,22 +369,35 @@ function activeLayers(
 }
 
 function mergeLayers(layers: NamedLayer[]): {
-	config: McpConfig;
+	config: ScopedMcpConfig;
 	serverOrigins: Record<string, string>;
+	serverScopes: Record<string, "global" | "project">;
 } {
-	const mcpServers: Record<string, ServerEntry> = {};
+	const mcpServers: Record<string, RegistryServerEntry> = {};
 	const serverOrigins: Record<string, string> = {};
-	let settings: Omit<McpSettings, "toolPrefix"> | undefined;
+	const serverScopes: Record<string, "global" | "project"> = {};
+	let settings: RegistrySettings | undefined;
 
 	for (const layer of layers) {
 		for (const [name, entry] of Object.entries(layer.scope.mcpServers ?? {})) {
 			const inherited = mcpServers[name];
 			if (inherited && isInheritedServerOverride(entry)) {
-				mcpServers[name] = { ...inherited, ...entry };
+				const merged = { ...inherited, ...entry };
+				if (entry.enabled !== undefined && entry.disabled === undefined) {
+					delete merged.disabled;
+				}
+				if (entry.disabled !== undefined && entry.enabled === undefined) {
+					delete merged.enabled;
+				}
+				mcpServers[name] = merged;
 				serverOrigins[name] = `${layer.label} override`;
 			} else {
 				mcpServers[name] = entry;
 				serverOrigins[name] = layer.label;
+			}
+			if ("kind" in layer) {
+				const kind = (layer as ActiveLayer).kind;
+				serverScopes[name] = kind.startsWith("global") ? "global" : "project";
 			}
 		}
 		if (layer.scope.settings) {
@@ -384,7 +405,7 @@ function mergeLayers(layers: NamedLayer[]): {
 		}
 	}
 
-	return { config: { mcpServers, settings }, serverOrigins };
+	return { config: { mcpServers, settings }, serverOrigins, serverScopes };
 }
 
 export function readScopedMcpRegistry(registryPath: string): ScopedMcpRegistry {
@@ -462,31 +483,50 @@ export function selectScopedMcpConfig(
 		profileNames,
 		registryPath,
 		serverOrigins: merged.serverOrigins,
+		serverScopes: merged.serverScopes,
 	};
 }
 
-function deleteDisabled(entry: ServerEntry): ServerEntry {
+function deleteDisabled(entry: RegistryServerEntry): RegistryServerEntry {
 	const next = { ...entry };
 	delete next.disabled;
+	delete next.enabled;
 	return next;
 }
 
 function toggledEntry(
-	entry: ServerEntry | undefined,
-	inherited: ServerEntry | undefined,
+	entry: RegistryServerEntry | undefined,
+	inherited: RegistryServerEntry | undefined,
 	disabled: boolean,
-): ServerEntry | undefined {
+): RegistryServerEntry | undefined {
 	if (entry && !isInheritedServerOverride(entry)) {
-		return disabled ? { ...entry, disabled: true } : deleteDisabled(entry);
+		return disabled
+			? { ...deleteDisabled(entry), disabled: true }
+			: deleteDisabled(entry);
 	}
 
 	const next = { ...(entry ?? {}) };
-	if ((inherited?.disabled === true) === disabled) {
+	delete next.enabled;
+	if (isServerDisabled(inherited) === disabled) {
 		delete next.disabled;
 	} else {
 		next.disabled = disabled;
 	}
 	return Object.keys(next).length > 0 ? next : undefined;
+}
+
+export function isServerDisabled(
+	entry: RegistryServerEntry | undefined,
+): boolean {
+	if (entry?.disabled !== undefined) return entry.disabled;
+	return entry?.enabled === false;
+}
+
+export function getRegistryExposure(
+	entry: RegistryServerEntry | undefined,
+): McpExposure {
+	if (entry?.exposure) return entry.exposure;
+	return entry?.directTools === true ? "direct" : "codemode";
 }
 
 export function setServerDisabled(options: {
@@ -560,6 +600,72 @@ export function setServerDisabled(options: {
 	return {
 		changed,
 		disabled: options.disabled,
+		scopeName: targetLayer.label,
+		serverName: options.serverName,
+		registryPath: options.registryPath,
+	};
+}
+
+export function setServerExposure(options: {
+	cwd: string;
+	exposure: McpExposure;
+	registryPath: string;
+	serverName: string;
+}): ServerExposureResult {
+	const registry = readScopedMcpRegistry(options.registryPath);
+	const selection = selectScopedMcpConfig(
+		registry,
+		options.cwd,
+		options.registryPath,
+	);
+	const layers = activeLayers(
+		registry,
+		selection.projectName,
+		selection.projectPath,
+	);
+	const targetLayer = [...layers]
+		.reverse()
+		.find((layer) => layer.scope.mcpServers?.[options.serverName]);
+	if (!targetLayer) {
+		throw new Error(
+			`[scoped-mcp] Server "${options.serverName}" is not defined in the active scope`,
+		);
+	}
+
+	const targetIndex = layers.indexOf(targetLayer);
+	const inherited = mergeLayers(layers.slice(0, targetIndex)).config.mcpServers[
+		options.serverName
+	];
+	const currentEntry = targetLayer.source.mcpServers?.[options.serverName];
+	if (!currentEntry) {
+		throw new Error(
+			`[scoped-mcp] Could not resolve the definition of server "${options.serverName}"`,
+		);
+	}
+
+	const nextEntry = { ...currentEntry };
+	const defaultExposure = isInheritedServerOverride(currentEntry)
+		? getRegistryExposure(inherited)
+		: getRegistryExposure({ ...currentEntry, exposure: undefined });
+	if (options.exposure === defaultExposure) {
+		delete nextEntry.exposure;
+	} else {
+		nextEntry.exposure = options.exposure;
+	}
+
+	const shouldDelete = Object.keys(nextEntry).length === 0;
+	const changed = JSON.stringify(nextEntry) !== JSON.stringify(currentEntry);
+	if (shouldDelete) {
+		delete targetLayer.source.mcpServers?.[options.serverName];
+	} else {
+		targetLayer.source.mcpServers ??= {};
+		targetLayer.source.mcpServers[options.serverName] = nextEntry;
+	}
+	if (changed) writeScopedMcpRegistry(options.registryPath, registry);
+
+	return {
+		changed,
+		exposure: options.exposure,
 		scopeName: targetLayer.label,
 		serverName: options.serverName,
 		registryPath: options.registryPath,

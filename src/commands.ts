@@ -1,6 +1,9 @@
-import type { ServerEntry, ToolPrefix } from "pi-mcp-adapter/types";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { openRegistryInTerminal } from "./editor.ts";
-import type { ScopedCommandContext, ScopedPiApi } from "./pi-api.ts";
+import { describeEnabled, describeExposure } from "./native-mcp.ts";
 import {
 	ensureScopedMcpRegistry,
 	getRegistryPath,
@@ -19,18 +22,6 @@ function usage(): string {
 		"  /scoped-mcp disable <server> [--global|--project]",
 		"  /scoped-mcp edit",
 	].join("\n");
-}
-
-function directToolsLabel(entry: ServerEntry): string {
-	if (entry.directTools === true) return "direct: all";
-	if (Array.isArray(entry.directTools)) {
-		return `direct: ${entry.directTools.length} selected`;
-	}
-	return "proxy";
-}
-
-function toolPrefixLabel(entry: ServerEntry): ToolPrefix {
-	return entry.toolPrefix ?? "server";
 }
 
 export function formatScopedMcpStatus(
@@ -55,11 +46,11 @@ export function formatScopedMcpStatus(
 		lines.push("  (none)");
 	} else {
 		for (const name of serverNames) {
-			const effective = selection.config.mcpServers[name] as ServerEntry;
-			const enabled = effective.disabled === true ? "disabled" : "enabled";
+			const effective = selection.config.mcpServers[name];
+			if (!effective) continue;
 			const origin = selection.serverOrigins[name];
 			lines.push(
-				`  ${name}: ${enabled}, ${directToolsLabel(effective)}, prefix: ${toolPrefixLabel(effective)}, scope: ${origin}`,
+				`  ${name}: ${describeEnabled(effective)}, exposure: ${describeExposure(effective)}, scope: ${origin}`,
 			);
 		}
 	}
@@ -99,7 +90,7 @@ function parseToggleArgs(
 async function handleToggle(
 	disabled: boolean,
 	args: string[],
-	ctx: ScopedCommandContext,
+	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const parsed = parseToggleArgs(args);
 	const result = setServerDisabled({
@@ -128,7 +119,7 @@ async function handleToggle(
 
 async function handleCommand(
 	rawArgs: string,
-	ctx: ScopedCommandContext,
+	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const args = rawArgs.trim().split(/\s+/).filter(Boolean);
 	const subcommand = args.shift() || "status";
@@ -210,7 +201,7 @@ function argumentCompletions(prefix: string) {
 	}
 }
 
-export function registerScopedMcpCommand(pi: ScopedPiApi): void {
+export function registerScopedMcpCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("scoped-mcp", {
 		description: "Inspect and manage global and project-scoped MCP configuration",
 		getArgumentCompletions: argumentCompletions,

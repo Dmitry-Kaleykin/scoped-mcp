@@ -1,8 +1,8 @@
 {
   "name": "scoped-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Project-scoped and global MCP configuration for Pi, powered by pi-mcp-adapter.",
+  "description": "Project-scoped and global configuration for Pi's built-in MCP support.",
   "type": "module",
   "keywords": [
     "pi-package",
@@ -11,18 +11,16 @@
   ],
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --import tsx --test",
-    "postinstall": "node scripts/patch-adapter.mjs",
-    "update:adapter": "npm install --ignore-scripts --save-exact pi-mcp-adapter@latest",
-    "check:adapter": "npm outdated pi-mcp-adapter"
-  },
-  "dependencies": {
-    "pi-mcp-adapter": "2.32.1"
+    "test": "node --import tsx --test"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.1",
     "@types/node": "^24.1.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {
     "extensions": [
@@ -30,6 +28,6 @@
     ]
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   }
 }

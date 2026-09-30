@@ -98,7 +98,7 @@ test("activates global profiles before the global configuration", () => {
 		},
 		[GLOBAL_SCOPE_KEY]: {
 			profiles: ["common"],
-			mcpServers: { shared: { toolPrefix: "none" } },
+			mcpServers: { shared: { exposure: "direct" } },
 			settings: { idleTimeout: 20 },
 		},
 	});
@@ -109,7 +109,7 @@ test("activates global profiles before the global configuration", () => {
 	assert.deepEqual(selected.config, {
 		mcpServers: {
 			profiled: { command: "profile-command" },
-			shared: { command: "shared-command", toolPrefix: "none" },
+			shared: { command: "shared-command", exposure: "direct" },
 		},
 		settings: { idleTimeout: 20 },
 	});
@@ -170,7 +170,7 @@ test("merges global MCPs with the matching project", () => {
 		project: {
 			path: paths.project,
 			mcpServers: {
-				phpstorm: { command: "phpstorm-command", toolPrefix: "mcp" },
+				phpstorm: { command: "phpstorm-command", exposure: "direct" },
 			},
 		},
 	});
@@ -181,7 +181,7 @@ test("merges global MCPs with the matching project", () => {
 	assert.deepEqual(selected.config, {
 		mcpServers: {
 			global: { command: "global-command" },
-			phpstorm: { command: "phpstorm-command", toolPrefix: "mcp" },
+			phpstorm: { command: "phpstorm-command", exposure: "direct" },
 		},
 		settings: {
 			idleTimeout: 10,
@@ -205,12 +205,12 @@ test("merges global, ordered profiles, and project configuration", () => {
 			php: {
 				mcpServers: {
 					phpstorm: { command: "phpstorm-command" },
-					shared: { toolPrefix: "none" },
+					shared: { exposure: "direct" },
 				},
 				settings: { idleTimeout: 20 },
 			},
 			trusted: {
-				mcpServers: { shared: { samplingAutoApprove: true } },
+				mcpServers: { shared: { toolExposure: { search: "direct" } } },
 			},
 		},
 		project: {
@@ -228,8 +228,8 @@ test("merges global, ordered profiles, and project configuration", () => {
 			shared: {
 				url: "https://global.invalid/mcp",
 				headers: { Authorization: "global-secret" },
-				toolPrefix: "none",
-				samplingAutoApprove: true,
+				exposure: "direct",
+				toolExposure: { search: "direct" },
 				disabled: true,
 			},
 			phpstorm: { command: "phpstorm-command" },
@@ -369,14 +369,14 @@ test("profiles cannot select paths or extend other profiles", () => {
 	);
 });
 
-test("inherits per-server prefixes through disabled-only project overrides", () => {
+test("inherits per-server exposure through disabled-only project overrides", () => {
 	const paths = fixture();
 	const registry = parseRegistry({
 		[GLOBAL_SCOPE_KEY]: {
 			mcpServers: {
 				shared: {
 					command: "shared-command",
-					toolPrefix: "none",
+					exposure: "direct",
 				},
 			},
 		},
@@ -390,13 +390,13 @@ test("inherits per-server prefixes through disabled-only project overrides", () 
 
 	assert.deepEqual(selected.config.mcpServers.shared, {
 		command: "shared-command",
-		toolPrefix: "none",
+		exposure: "direct",
 		disabled: true,
 	});
 	assert.equal(selected.config.settings, undefined);
 });
 
-test("project can override an inherited server prefix without copying its definition", () => {
+test("project can override inherited exposure without copying the definition", () => {
 	const paths = fixture();
 	const registry = parseRegistry({
 		[GLOBAL_SCOPE_KEY]: {
@@ -404,13 +404,13 @@ test("project can override an inherited server prefix without copying its defini
 				shared: {
 					url: "https://global.invalid/mcp",
 					headers: { Authorization: "global-secret" },
-					toolPrefix: "mcp",
+					exposure: "codemode",
 				},
 			},
 		},
 		project: {
 			path: paths.project,
-			mcpServers: { shared: { toolPrefix: "none" } },
+			mcpServers: { shared: { exposure: "deferred" } },
 		},
 	});
 
@@ -419,26 +419,26 @@ test("project can override an inherited server prefix without copying its defini
 	assert.deepEqual(selected.config.mcpServers.shared, {
 		url: "https://global.invalid/mcp",
 		headers: { Authorization: "global-secret" },
-		toolPrefix: "none",
+		exposure: "deferred",
 	});
 	assert.equal(selected.config.settings, undefined);
 });
 
-test("keeps per-server sampling trust scoped to its server", () => {
+test("keeps per-tool exposure scoped to its server", () => {
 	const paths = fixture();
 	const registry = parseRegistry({
 		[GLOBAL_SCOPE_KEY]: {
 			mcpServers: {
 				trusted: {
 					command: "trusted-command",
-					samplingAutoApprove: true,
+					toolExposure: { search: "direct" },
 				},
 				untrusted: { command: "untrusted-command" },
 			},
 		},
 		project: {
 			path: paths.project,
-			mcpServers: { trusted: { samplingAutoApprove: false } },
+			mcpServers: { trusted: { toolExposure: { search: "hidden" } } },
 		},
 	});
 
@@ -446,55 +446,12 @@ test("keeps per-server sampling trust scoped to its server", () => {
 
 	assert.deepEqual(selected.config.mcpServers.trusted, {
 		command: "trusted-command",
-		samplingAutoApprove: false,
+		toolExposure: { search: "hidden" },
 	});
 	assert.deepEqual(selected.config.mcpServers.untrusted, {
 		command: "untrusted-command",
 	});
-	assert.equal(selected.config.settings?.samplingAutoApprove, undefined);
-});
-
-test("rejects root-level toolPrefix settings", () => {
-	assert.throws(
-		() =>
-			parseRegistry({
-				[GLOBAL_SCOPE_KEY]: {
-					settings: { toolPrefix: "none" },
-				},
-			}),
-		/set toolPrefix on each MCP server instead/,
-	);
-});
-
-test("rejects invalid per-server toolPrefix values", () => {
-	assert.throws(
-		() =>
-			parseRegistry({
-				[GLOBAL_SCOPE_KEY]: {
-					mcpServers: {
-						server: { command: "server-command", toolPrefix: "custom" },
-					},
-				},
-			}),
-		/must be "server", "short", "none", or "mcp"/,
-	);
-});
-
-test("rejects invalid per-server samplingAutoApprove values", () => {
-	assert.throws(
-		() =>
-			parseRegistry({
-				[GLOBAL_SCOPE_KEY]: {
-					mcpServers: {
-						server: {
-							command: "server-command",
-							samplingAutoApprove: "yes",
-						},
-					},
-				},
-			}),
-		/must be true or false/,
-	);
+	assert.equal(selected.config.settings, undefined);
 });
 
 test("chooses the deepest matching project path", () => {
@@ -525,7 +482,7 @@ test("project server definitions replace same-named global definitions", () => {
 				phpstorm: {
 					url: "https://global.invalid/mcp",
 					headers: { Authorization: "global-secret" },
-					toolPrefix: "mcp",
+					exposure: "direct",
 				},
 			},
 		},

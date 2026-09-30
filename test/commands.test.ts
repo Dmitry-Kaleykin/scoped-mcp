@@ -11,6 +11,7 @@ import {
 	readScopedMcpRegistry,
 	selectScopedMcpConfig,
 	setServerDisabled,
+	setServerExposure,
 	writeScopedMcpRegistry,
 } from "../src/registry.ts";
 
@@ -271,13 +272,13 @@ test("--project can enable a globally disabled server", () => {
 	);
 });
 
-test("project toggles preserve an inherited server's prefix override", () => {
+test("project toggles preserve an inherited server's exposure override", () => {
 	const paths = fixture();
 	const registry = readScopedMcpRegistry(paths.registryPath);
 	const projectScope = registry.project;
 	assert.ok(projectScope);
 	projectScope.mcpServers ??= {};
-	projectScope.mcpServers.shared = { toolPrefix: "none" };
+	projectScope.mcpServers.shared = { exposure: "direct" };
 	writeScopedMcpRegistry(paths.registryPath, registry);
 
 	setServerDisabled({
@@ -289,7 +290,7 @@ test("project toggles preserve an inherited server's prefix override", () => {
 	});
 	assert.deepEqual(
 		readScopedMcpRegistry(paths.registryPath).project?.mcpServers?.shared,
-		{ toolPrefix: "none", disabled: true },
+		{ exposure: "direct", disabled: true },
 	);
 
 	setServerDisabled({
@@ -301,7 +302,38 @@ test("project toggles preserve an inherited server's prefix override", () => {
 	});
 	assert.deepEqual(
 		readScopedMcpRegistry(paths.registryPath).project?.mcpServers?.shared,
-		{ toolPrefix: "none" },
+		{ exposure: "direct" },
+	);
+});
+
+test("native MCP exposure changes persist to the effective definition", () => {
+	const paths = fixture();
+
+	const changed = setServerExposure({
+		cwd: paths.project,
+		exposure: "deferred",
+		registryPath: paths.registryPath,
+		serverName: "project",
+	});
+
+	assert.equal(changed.changed, true);
+	assert.equal(changed.scopeName, "project");
+	assert.equal(
+		readScopedMcpRegistry(paths.registryPath).project?.mcpServers?.project
+			?.exposure,
+		"deferred",
+	);
+
+	setServerExposure({
+		cwd: paths.project,
+		exposure: "direct",
+		registryPath: paths.registryPath,
+		serverName: "project",
+	});
+	assert.equal(
+		readScopedMcpRegistry(paths.registryPath).project?.mcpServers?.project
+			?.exposure,
+		undefined,
 	);
 });
 
@@ -313,10 +345,10 @@ test("status reports registry, scope, origin, state, and direct mode", () => {
 
 	assert.match(status, new RegExp(`Registry: ${paths.registryPath}`));
 	assert.match(status, /Scope: project/);
-	assert.match(status, /global: enabled, proxy, prefix: server, scope: \$global/);
+	assert.match(status, /global: enabled, exposure: codemode, scope: \$global/);
 	assert.match(
 		status,
-		/project: enabled, direct: all, prefix: server, scope: project/,
+		/project: enabled, exposure: direct, scope: project/,
 	);
 });
 
@@ -338,7 +370,7 @@ test("status reports active profiles and profile server origins", () => {
 	assert.match(status, /Profiles: reusable/);
 	assert.match(
 		status,
-		/profiled: enabled, proxy, prefix: server, scope: profile reusable/,
+		/profiled: enabled, exposure: codemode, scope: profile reusable/,
 	);
 });
 
@@ -360,7 +392,7 @@ test("status reports globally activated profiles", () => {
 	assert.match(status, /Profiles: common/);
 	assert.match(
 		status,
-		/profiled: enabled, proxy, prefix: server, scope: profile common \(global\)/,
+		/profiled: enabled, exposure: codemode, scope: profile common \(global\)/,
 	);
 });
 
